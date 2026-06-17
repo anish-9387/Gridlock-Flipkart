@@ -60,6 +60,8 @@ def compute_features_and_vulnerability(df):
     df_feat = df.copy()
     df_feat['resolution_minutes'] = y_res
     df_feat['impact_level'] = y_impact
+    df_feat['priority_High'] = (df_feat['priority'].astype(str).str.lower().str.strip() == 'high').astype(int)
+    df_feat['requires_road_closure'] = df_feat['requires_road_closure'].fillna(0).astype(int)
     vuln = compute_junction_vulnerability(df_feat)
     return df_feat, vuln, encoders, feat_cols
 

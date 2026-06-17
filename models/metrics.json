@@ -1,8 +1,8 @@
 {
-  "impact_accuracy": 0.7572,
-  "resolution_mae": 109.5,
-  "resolution_r2": 0.0498,
-  "cascade_accuracy": 0.9309,
+  "impact_accuracy": 0.756,
+  "resolution_mae": 111.7,
+  "resolution_r2": 0.0246,
+  "cascade_accuracy": 0.9266,
   "train_samples": 6538,
   "test_samples": 1635
 }
