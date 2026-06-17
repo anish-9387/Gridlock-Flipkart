@@ -32,6 +32,7 @@ from src.vulnerability import compute_junction_vulnerability, get_fragile_juncti
 from src.similarity import load_similarity_engine, find_similar_events
 from src.resources import recommend_resources, IMPACT_RESOURCE_MAP
 from src.cascade_autopsy import estimate_point_of_no_return, generate_timeline
+from src.digital_twin import run_scenario, compare_scenarios, scenarios_to_dataframe
 
 MODELS_DIR = os.path.join(os.path.dirname(__file__), 'models')
 DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
@@ -98,7 +99,8 @@ def main():
                 "⚠️ Junction Vulnerability",
                 "🔍 Event Similarity Search",
                 "🕵️ Cascade Autopsy",
-                "📋 Resource Recommendation"
+                "📋 Resource Recommendation",
+                "🔄 Digital Twin Simulator"
             ]
         )
 
@@ -129,6 +131,8 @@ def main():
         show_autopsy(df, df_feat, impact_model, res_model, cascade_model, encoders, feat_cols)
     elif page == "📋 Resource Recommendation":
         show_resources(df_feat)
+    elif page == "🔄 Digital Twin Simulator":
+        show_digital_twin(df, impact_model, res_model, cascade_model, encoders)
 
 
 def show_dashboard(df, df_feat, junction_vuln):
@@ -254,6 +258,8 @@ def show_prediction(df, df_feat, impact_model, res_model, cascade_model, encoder
             'zone': zone,
             'junction': junction if junction != 'Unknown' else 'unknown',
             'start_datetime': pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'resolved_datetime': None,
+            'closed_datetime': None,
             'police_station': 'unknown',
             'status': 'active',
             'latitude': 12.97,
@@ -261,7 +267,7 @@ def show_prediction(df, df_feat, impact_model, res_model, cascade_model, encoder
         }])
 
         try:
-            X_input, _, _, _ = engineer_features(
+            X_input, _, _, _, _ = engineer_features(
                 input_data, is_train=False, target_encoders=encoders
             )
         except Exception as e:
@@ -535,7 +541,7 @@ def show_autopsy(df, df_feat, impact_model, res_model, cascade_model, encoders, 
 
         X_event = pd.DataFrame([event_row.to_dict()])
         try:
-            X_input, _, _, _ = engineer_features(
+            X_input, _, _, _, _ = engineer_features(
                 X_event, is_train=False, target_encoders=encoders
             )
         except Exception as e:
@@ -710,6 +716,148 @@ def show_resources(df_feat):
         - Road closure increases barricade needs by 50%
         - Major corridors add 10% to resource requirements
         """)
+        
+        
+def show_digital_twin(df, impact_model, res_model, cascade_model, encoders):
+    st.header("🔄 Traffic Digital Twin Simulator")
+    st.markdown("**Compare multiple event scenarios side-by-side to assess impact before it happens.**")
+
+    df = load_dataset()
+
+    if 'scenarios' not in st.session_state:
+        st.session_state.scenarios = []
+    if 'scenario_results' not in st.session_state:
+        st.session_state.scenario_results = []
+
+    with st.expander("➕ Add a Scenario", expanded=len(st.session_state.scenarios) == 0):
+        with st.form("scenario_form"):
+            col1, col2 = st.columns(2)
+            with col1:
+                scenario_name = st.text_input("Scenario Name", value=f"Scenario {len(st.session_state.scenarios) + 1}")
+                twin_event_type = st.selectbox("Event Type", ['unplanned', 'planned'], key='twin_type')
+                twin_event_cause = st.selectbox(
+                    "Event Cause",
+                    ['vehicle_breakdown', 'water_logging', 'tree_fall', 'accident',
+                     'construction', 'public_event', 'procession', 'vip_movement',
+                     'protest', 'pot_holes', 'congestion', 'road_conditions', 'others'],
+                    key='twin_cause'
+                )
+                twin_priority = st.selectbox("Priority", ['Low', 'High'], key='twin_priority')
+            with col2:
+                twin_corridor = st.selectbox("Corridor", sorted(df['corridor'].dropna().unique()), key='twin_corridor')
+                twin_zone = st.selectbox("Zone", sorted(df['zone'].dropna().unique()), key='twin_zone')
+                twin_junction = st.selectbox("Junction", ['Unknown'] + sorted(
+                    [j for j in df['junction'].dropna().unique() if j != 'unknown']), key='twin_junction')
+                twin_hour = st.slider("Hour of Day", 0, 23, 14, key='twin_hour')
+                twin_closure = st.checkbox("Requires Road Closure", key='twin_closure')
+
+            if st.form_submit_button("➕ Add to Comparison", type="primary"):
+                params = {
+                    'name': scenario_name,
+                    'event_type': twin_event_type,
+                    'event_cause': twin_event_cause,
+                    'priority': twin_priority,
+                    'requires_road_closure': twin_closure,
+                    'corridor': twin_corridor,
+                    'zone': twin_zone,
+                    'junction': twin_junction,
+                    'hour': twin_hour
+                }
+                st.session_state.scenarios.append(params)
+                st.rerun()
+
+    if st.session_state.scenarios:
+        st.markdown("### 🎯 Scenarios Queued for Comparison")
+
+        for i, s in enumerate(st.session_state.scenarios):
+            loc_display = s['junction'] if s['junction'] != 'Unknown' else f"{s['corridor']}"
+            cols = st.columns([0.05, 0.25, 0.2, 0.2, 0.25, 0.05])
+            with cols[0]:
+                st.write(f"{i + 1}")
+            with cols[1]:
+                st.write(f"**{s['name']}**")
+            with cols[2]:
+                st.write(f"{s['event_cause']}")
+            with cols[3]:
+                st.write(f"{s['priority']} priority")
+            with cols[4]:
+                st.write(f"📍 {loc_display}")
+            with cols[5]:
+                if st.button("✕", key=f"remove_scenario_{i}"):
+                    st.session_state.scenarios.pop(i)
+                    st.session_state.scenario_results = []
+                    st.rerun()
+
+        col1, col2 = st.columns([1, 5])
+        with col1:
+            if st.button("🔄 Run Comparison", type="primary"):
+                with st.spinner("Simulating scenarios..."):
+                    st.session_state.scenario_results = compare_scenarios(
+                        st.session_state.scenarios, impact_model, res_model, cascade_model, encoders
+                    )
+                st.rerun()
+
+        with col2:
+            if st.session_state.scenario_results:
+                if st.button("🗑️ Clear All"):
+                    st.session_state.scenarios = []
+                    st.session_state.scenario_results = []
+                    st.rerun()
+
+    if st.session_state.scenario_results:
+        st.markdown("### 📊 Scenario Comparison Results")
+
+        results_df = scenarios_to_dataframe(st.session_state.scenario_results)
+        st.dataframe(results_df, use_container_width=True, hide_index=True)
+
+        chart_df = results_df.copy()
+        chart_df['Resolution (min)'] = pd.to_numeric(chart_df['Resolution (min)'], errors='coerce')
+
+        color_map = {'Low': '#2ECC71', 'Medium': '#F1C40F', 'High': '#E67E22', 'Critical': '#E74C3C'}
+        chart_df['color'] = chart_df['Impact Level'].map(color_map).fillna('#95A5A6')
+        chart_df['label'] = chart_df.apply(
+            lambda r: f"{r['Impact Level']}<br>{r['Resolution (min)']:.0f} min", axis=1)
+
+        fig = go.Figure()
+        fig.add_trace(go.Bar(
+            x=chart_df['Scenario'].tolist(),
+            y=chart_df['Resolution (min)'].tolist(),
+            text=chart_df['label'].tolist(),
+            textposition='inside',
+            marker_color=chart_df['color'].tolist()
+        ))
+        fig.update_layout(
+            title="Resolution Time by Scenario",
+            yaxis_title="Minutes",
+            height=400
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+        with st.expander("📈 Detailed Comparison by Metric"):
+            metric_chart_df = results_df.copy()
+            for col in ['Resolution (min)', 'Confidence', 'Cascade Prob.']:
+                if col in metric_chart_df.columns:
+                    metric_chart_df[col] = pd.to_numeric(
+                        metric_chart_df[col].astype(str).str.rstrip('%'), errors='coerce'
+                    )
+
+            fig2 = go.Figure()
+            for col in ['Resolution (min)', 'Confidence', 'Cascade Prob.']:
+                if col in metric_chart_df.columns:
+                    fig2.add_trace(go.Bar(
+                        name=col,
+                        x=metric_chart_df['Scenario'],
+                        y=metric_chart_df[col],
+                        text=[f"{v:.1f}" if isinstance(v, (int, float)) else str(v) for v in metric_chart_df[col]],
+                        textposition='outside'
+                    ))
+            fig2.update_layout(
+                title="Multi-Metric Scenario Comparison",
+                yaxis_title="Value",
+                barmode='group',
+                height=400
+            )
+            st.plotly_chart(fig2, use_container_width=True)
 
 
 if __name__ == '__main__':

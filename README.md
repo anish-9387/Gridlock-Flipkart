@@ -58,9 +58,11 @@ Historical Events
        ↓
   Resource Recommendation  ─── Context-Aware Allocation Engine
        ↓
-  Cascade Autopsy          ─── Counterfactual Simulation
-       ↓
-  Streamlit Dashboard      ─── Interactive Decision Support
+   Cascade Autopsy          ─── Counterfactual Simulation
+        ↓
+   Digital Twin Simulator   ─── Multi-Scenario Comparison
+        ↓
+   Streamlit Dashboard      ─── Interactive Decision Support
 ```
 
 ---
@@ -127,6 +129,13 @@ The flagship feature — identifies the exact decision window where intervention
 - **Method:** Binary search over intervention timing to find the Point of No Return
 - **Outputs:** Point of No Return timestamp, Decision Window (minutes), Potential Delay Saved, Reality vs Counterfactual timeline
 
+### 9. Traffic Digital Twin Simulator
+Compares multiple event scenarios side-by-side to assess impact, resource needs, and cascade risk before deployment.
+
+- **Inputs:** Multiple scenario configurations (event type, cause, priority, location, time, road closure)
+- **Outputs:** Side-by-side comparison table and visualizations of impact level, resolution time, cascade probability, and resource requirements
+- **Engine:** Wraps Impact, Resolution, and Cascade models for parallel scenario simulation
+
 ---
 
 ## Dataset
@@ -168,7 +177,7 @@ The dataset contains **8,173 events** with 46 columns capturing:
 
 ```
 cascadeiq/
-├── app.py                          # Streamlit dashboard (7 interactive modules)
+├── app.py                          # Streamlit dashboard (8 interactive modules)
 ├── train.py                        # End-to-end training pipeline
 ├── pyproject.toml                  # Poetry project configuration
 ├── requirements.txt                # pip dependencies
@@ -191,7 +200,8 @@ cascadeiq/
     ├── vulnerability.py            # Junction Risk Index calculation
     ├── similarity.py               # TF-IDF event similarity search
     ├── resources.py                # Context-aware resource recommendation
-    └── cascade_autopsy.py          # Counterfactual simulation engine
+    ├── cascade_autopsy.py          # Counterfactual simulation engine
+    └── digital_twin.py             # Multi-scenario comparison simulator
 ```
 
 ---
@@ -250,6 +260,7 @@ poetry run streamlit run app.py
 5. **Event Similarity Search** — Find top-5 historical events matching any event profile
 6. **Cascade Autopsy** — Select any historical event and run counterfactual analysis to discover the Point of No Return
 7. **Resource Recommendation** — Get optimized officer, barricade, and diversion recommendations
+8. **Digital Twin Simulator** — Create and compare multiple event scenarios side-by-side
 
 ---
 
@@ -282,7 +293,6 @@ All models validated using **time-aware train/test split** (80/20 chronological)
 
 ## Future Enhancements
 
-- Traffic Digital Twin Simulator for scenario comparison
 - Reinforcement Learning-based diversion optimization
 - LLM-powered Traffic Commander for conversational queries
 - Real-time integration with traffic sensors and CCTV feeds
