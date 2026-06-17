@@ -60,7 +60,9 @@ Historical Events
        ↓
    Cascade Autopsy          ─── Counterfactual Simulation
         ↓
-   Digital Twin Simulator   ─── Multi-Scenario Comparison
+    Digital Twin Simulator   ─── Multi-Scenario Comparison
+        ↓
+   Knowledge Graph          ─── Multi-Dimensional Event Relationship Analysis
         ↓
    Streamlit Dashboard      ─── Interactive Decision Support
 ```
@@ -136,6 +138,14 @@ Compares multiple event scenarios side-by-side to assess impact, resource needs,
 - **Outputs:** Side-by-side comparison table and visualizations of impact level, resolution time, cascade probability, and resource requirements
 - **Engine:** Wraps Impact, Resolution, and Cascade models for parallel scenario simulation
 
+### 10. Knowledge Graph — Event Relationship Analysis
+Discovers multi-dimensional relationships between events based on shared cause, location, and type attributes.
+
+- **Connections:** Cosine similarity over one-hot encoded attributes (event cause, corridor, zone, junction, type, priority)
+- **Layout:** PCA projection to 2D for interactive graph visualization
+- **Outputs:** Interactive graph with node details, filters by cause/zone, cluster statistics
+- **Filtering:** Adjustable similarity threshold and node count
+
 ---
 
 ## Dataset
@@ -177,7 +187,7 @@ The dataset contains **8,173 events** with 46 columns capturing:
 
 ```
 cascadeiq/
-├── app.py                          # Streamlit dashboard (8 interactive modules)
+├── app.py                          # Streamlit dashboard (9 interactive modules)
 ├── train.py                        # End-to-end training pipeline
 ├── pyproject.toml                  # Poetry project configuration
 ├── requirements.txt                # pip dependencies
@@ -201,7 +211,8 @@ cascadeiq/
     ├── similarity.py               # TF-IDF event similarity search
     ├── resources.py                # Context-aware resource recommendation
     ├── cascade_autopsy.py          # Counterfactual simulation engine
-    └── digital_twin.py             # Multi-scenario comparison simulator
+    ├── digital_twin.py             # Multi-scenario comparison simulator
+    └── knowledge_graph.py          # Multi-dimensional event relationship analysis
 ```
 
 ---
@@ -261,6 +272,7 @@ poetry run streamlit run app.py
 6. **Cascade Autopsy** — Select any historical event and run counterfactual analysis to discover the Point of No Return
 7. **Resource Recommendation** — Get optimized officer, barricade, and diversion recommendations
 8. **Digital Twin Simulator** — Create and compare multiple event scenarios side-by-side
+9. **Knowledge Graph** — Explore multi-dimensional event relationships through an interactive graph
 
 ---
 
@@ -296,4 +308,3 @@ All models validated using **time-aware train/test split** (80/20 chronological)
 - Reinforcement Learning-based diversion optimization
 - LLM-powered Traffic Commander for conversational queries
 - Real-time integration with traffic sensors and CCTV feeds
-- Knowledge Graph for multi-dimensional event relationship analysis

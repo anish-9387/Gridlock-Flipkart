@@ -33,6 +33,7 @@ from src.similarity import load_similarity_engine, find_similar_events
 from src.resources import recommend_resources, IMPACT_RESOURCE_MAP
 from src.cascade_autopsy import estimate_point_of_no_return, generate_timeline
 from src.digital_twin import run_scenario, compare_scenarios, scenarios_to_dataframe
+from src.knowledge_graph import build_event_graph, get_graph_stats
 
 MODELS_DIR = os.path.join(os.path.dirname(__file__), 'models')
 DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
@@ -100,7 +101,8 @@ def main():
                 "🔍 Event Similarity Search",
                 "🕵️ Cascade Autopsy",
                 "📋 Resource Recommendation",
-                "🔄 Digital Twin Simulator"
+                "🔄 Digital Twin Simulator",
+                "🕸️ Knowledge Graph"
             ]
         )
 
@@ -133,6 +135,8 @@ def main():
         show_resources(df_feat)
     elif page == "🔄 Digital Twin Simulator":
         show_digital_twin(df, impact_model, res_model, cascade_model, encoders)
+    elif page == "🕸️ Knowledge Graph":
+        show_knowledge_graph(df_feat)
 
 
 def show_dashboard(df, df_feat, junction_vuln):
@@ -858,6 +862,147 @@ def show_digital_twin(df, impact_model, res_model, cascade_model, encoders):
                 height=400
             )
             st.plotly_chart(fig2, use_container_width=True)
+
+
+def show_knowledge_graph(df_feat):
+    st.header("🕸️ Knowledge Graph — Event Relationship Analysis")
+    st.markdown("**Explore multi-dimensional relationships between events based on shared cause, location, and type.**")
+
+    with st.sidebar:
+        st.subheader("Knowledge Graph Filters")
+        max_nodes = st.slider("Max Events", 20, 100, 50, key='kg_nodes')
+        min_sim = st.slider("Min Similarity", 0.05, 0.8, 0.2, 0.05, key='kg_sim')
+        causes = ['All'] + sorted(df_feat['event_cause'].dropna().unique().tolist())
+        selected_cause = st.selectbox("Event Cause", causes, key='kg_cause')
+        zones = ['All'] + sorted(df_feat['zone'].dropna().unique().tolist())
+        selected_zone = st.selectbox("Zone", zones, key='kg_zone')
+        color_by = st.selectbox("Color Nodes By", ['event_cause', 'impact_level', 'priority', 'zone'],
+                                key='kg_color')
+
+    with st.spinner("Building knowledge graph..."):
+        nodes_df, edges_df = build_event_graph(
+            df_feat, max_nodes=max_nodes, min_similarity=min_sim,
+            filter_cause=selected_cause, filter_zone=selected_zone
+        )
+
+    if nodes_df.empty:
+        st.warning("Not enough connected events to build a graph. Try increasing max events or lowering the similarity threshold.")
+        return
+
+    stats = get_graph_stats(nodes_df, edges_df)
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.metric("Events (Nodes)", stats['nodes'])
+    with col2:
+        st.metric("Connections (Edges)", stats['edges'])
+    with col3:
+        st.metric("Clusters", stats['clusters'])
+    with col4:
+        st.metric("Avg Connections/Event", stats['avg_degree'])
+
+    edge_traces = []
+    if not edges_df.empty:
+        edge_x = []
+        edge_y = []
+        for _, e in edges_df.iterrows():
+            src = nodes_df[nodes_df['id'] == e['source']].iloc[0]
+            tgt = nodes_df[nodes_df['id'] == e['target']].iloc[0]
+            edge_x.extend([src['x'], tgt['x'], None])
+            edge_y.extend([src['y'], tgt['y'], None])
+        edge_traces.append(go.Scatter(
+            x=edge_x, y=edge_y,
+            mode='lines',
+            line=dict(width=0.5, color='#888'),
+            hoverinfo='none',
+            showlegend=False
+        ))
+
+    if color_by == 'impact_level':
+        nodes_df['color_group'] = nodes_df['impact_level'].map({0: 'Low', 1: 'Medium', 2: 'High', 3: 'Critical'})
+    else:
+        nodes_df['color_group'] = nodes_df[color_by]
+
+    color_palette = px.colors.qualitative.Set2 + px.colors.qualitative.Set3
+    unique_groups = nodes_df['color_group'].unique()
+    group_colors = {g: color_palette[i % len(color_palette)] for i, g in enumerate(sorted(unique_groups))}
+    node_colors = nodes_df['color_group'].map(group_colors).tolist()
+
+    def fmt_location(r):
+        parts = []
+        if r['junction'] != 'unknown':
+            parts.append(r['junction'])
+        if r['corridor'] != 'unknown':
+            parts.append(r['corridor'])
+        if r['zone'] != 'unknown':
+            parts.append(r['zone'])
+        return ', '.join(parts) if parts else 'Unknown'
+
+    node_labels = nodes_df.apply(
+        lambda r: r['corridor'] if r['corridor'] != 'unknown'
+                  else (r['zone'] if r['zone'] != 'unknown' else ''),
+        axis=1
+    ).tolist()
+
+    node_trace = go.Scatter(
+        x=nodes_df['x'], y=nodes_df['y'],
+        mode='markers+text',
+        text=node_labels,
+        textposition='top center',
+        textfont=dict(size=8, color='#333'),
+        marker=dict(
+            size=nodes_df['degree'].clip(lower=5, upper=25).tolist(),
+            color=node_colors,
+            line=dict(width=1, color='#333'),
+            opacity=0.85
+        ),
+        customdata=nodes_df.apply(
+            lambda r: [
+                r['event_cause'],
+                fmt_location(r),
+                r['priority'],
+                ['Low', 'Medium', 'High', 'Critical'][min(int(r['impact_level']), 3)],
+                f"{r['resolution_minutes']:.0f}",
+                str(r['degree'])
+            ],
+            axis=1
+        ).tolist(),
+        hovertemplate=(
+            "<b>%{customdata[0]}</b><br>"
+            "📍 %{customdata[1]}<br>"
+            "Priority: %{customdata[2]}<br>"
+            "Impact: %{customdata[3]} | Resolution: %{customdata[4]} min<br>"
+            "Connections: %{customdata[5]}<extra></extra>"
+        ),
+        showlegend=False
+    )
+
+    fig = go.Figure(data=edge_traces + [node_trace])
+    fig.update_layout(
+        title=f"Knowledge Graph — {stats['nodes']} events, {stats['edges']} connections, {stats['clusters']} clusters",
+        showlegend=False,
+        hovermode='closest',
+        height=600,
+        xaxis=dict(showgrid=False, zeroline=False, visible=False),
+        yaxis=dict(showgrid=False, zeroline=False, visible=False),
+        plot_bgcolor='rgba(0,0,0,0)',
+        margin=dict(l=10, r=10, t=40, b=10)
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    with st.expander("📋 Node Details"):
+        display_cols = ['event_cause', 'corridor', 'zone', 'junction', 'priority',
+                        'event_type', 'impact_level', 'resolution_minutes', 'degree']
+        display_map = {
+            'event_cause': 'Cause', 'corridor': 'Corridor', 'zone': 'Zone',
+            'junction': 'Junction', 'priority': 'Priority', 'event_type': 'Type',
+            'impact_level': 'Impact', 'resolution_minutes': 'Resolution (min)', 'degree': 'Connections'
+        }
+        details_df = nodes_df[[c for c in display_cols if c in nodes_df.columns]].copy()
+        if 'impact_level' in details_df.columns:
+            details_df['impact_level'] = details_df['impact_level'].map(
+                {0: 'Low', 1: 'Medium', 2: 'High', 3: 'Critical'})
+        details_df.columns = [display_map.get(c, c) for c in details_df.columns]
+        st.dataframe(details_df, use_container_width=True, hide_index=True)
 
 
 if __name__ == '__main__':
