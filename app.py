@@ -1,1008 +1,810 @@
 """
 CascadeIQ — Event Impact Forecasting & Response Intelligence System
-Gridlock-Flipkart 2.0 Hackathon
+Gridlock-Flipkart 2.0 Hackathon · Streamlit dashboard
 """
 
-import streamlit as st
-import pandas as pd
-import numpy as np
-import plotly.express as px
-import plotly.graph_objects as go
-import matplotlib.pyplot as plt
 import os
 import sys
 import json
-from datetime import datetime, timedelta
 import warnings
+import numpy as np
+import pandas as pd
+import plotly.express as px
+import plotly.graph_objects as go
+import joblib
+import streamlit as st
+from datetime import timedelta
+
 warnings.filterwarnings('ignore')
-
-st.set_page_config(
-    page_title="CascadeIQ — Event Impact Intelligence",
-    page_icon="🚦",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
+st.set_page_config(page_title="CascadeIQ — Event Impact Intelligence", page_icon="🚦",
+                   layout="wide", initial_sidebar_state="expanded")
 sys.path.insert(0, os.path.dirname(__file__))
 
-from src.feature_engineering import engineer_features, ENGINEERED_FEATURE_COLS
-from src.models import load_model, predict_resolution
+from src.feature_engineering import engineer_features, display_resolution, DURATION_BAND_LABELS
+from src.models import (load_model, predict_resolution, predict_cascade_proba,
+                        explain_prediction, feature_importance)
+from src.network import (load_network, simulate_propagation, percolation_early_warning,
+                         diversion_candidates, centrality_feature_map)
+from src.ttf import estimate_ttf
+from src.explain import waterfall_figure, importance_figure, drivers_text, humanize
+from src.resources import recommend_resources, IMPACT_RESOURCE_MAP
+from src import cascade_autopsy, black_box, early_warning, post_event, digital_twin
+from src.similarity import load_similarity_engine, find_similar_events
 from src.hotspot_detection import load_hotspot_models
 from src.vulnerability import compute_junction_vulnerability, get_fragile_junctions
-from src.similarity import load_similarity_engine, find_similar_events
-from src.resources import recommend_resources, IMPACT_RESOURCE_MAP
-from src.cascade_autopsy import estimate_point_of_no_return, generate_timeline
-from src.digital_twin import run_scenario, compare_scenarios, scenarios_to_dataframe
 from src.knowledge_graph import build_event_graph, get_graph_stats
 
 MODELS_DIR = os.path.join(os.path.dirname(__file__), 'models')
 DATA_DIR = os.path.join(os.path.dirname(__file__), 'data')
+IMPACT_LABELS = {0: 'Low', 1: 'Medium', 2: 'High', 3: 'Critical'}
+IMPACT_EMOJI = {0: '🟢 Low', 1: '🟡 Medium', 2: '🟠 High', 3: '🔴 Critical'}
+IMPACT_COLORS = {0: '#2ECC71', 1: '#F1C40F', 2: '#E67E22', 3: '#E74C3C'}
+CAUSES = ['vehicle_breakdown', 'water_logging', 'tree_fall', 'accident', 'construction',
+          'public_event', 'procession', 'vip_movement', 'protest', 'pot_holes',
+          'congestion', 'road_conditions', 'others']
 
 
 @st.cache_resource
-def load_all_models():
-    impact_model = load_model('impact_classifier')
-    res_model = load_model('resolution_regressor')
-    cascade_model = load_model('cascade_classifier')
-    vectorizer, tfidf_matrix, event_data = load_similarity_engine()
+def load_artifacts():
+    enc = joblib.load(os.path.join(MODELS_DIR, 'encoders.pkl'))
+    cal = joblib.load(os.path.join(MODELS_DIR, 'cascade_calibrator.pkl'))
+    models = {
+        'impact': load_model('impact_classifier'),
+        'resolution': load_model('resolution_regressor'),
+        'cascade': load_model('cascade_classifier'),
+        'prolonged': load_model('prolonged_classifier'),
+        'calibrator': cal, 'encoders': enc, 'cmap': enc.get('cmap', {}),
+    }
+    G, cen = load_network()
+    vec, mat, edata = load_similarity_engine()
     hotspots = load_hotspot_models()
-    return impact_model, res_model, cascade_model, vectorizer, tfidf_matrix, event_data, hotspots
+    return models, G, cen, (vec, mat, edata), hotspots
 
 
 @st.cache_data
 def load_dataset():
-    path = os.path.join(os.path.dirname(__file__), 'data', 'dataset.csv')
-    df = pd.read_csv(path, low_memory=False)
-    return df
+    return pd.read_csv(os.path.join(DATA_DIR, 'dataset.csv'), low_memory=False)
 
 
 @st.cache_data
-def compute_features_and_vulnerability(df):
-    X, y_res, y_impact, encoders, scaler, feat_cols = engineer_features(df, is_train=True)
+def compute_feat(_enc_key):
+    df = load_dataset()
+    models, *_ = load_artifacts()
+    _, t, _, _ = engineer_features(df, is_train=False, encoders=models['encoders'])
     df_feat = df.copy()
-    df_feat['resolution_minutes'] = y_res
-    df_feat['impact_level'] = y_impact
-    df_feat['priority_High'] = (df_feat['priority'].astype(str).str.lower().str.strip() == 'high').astype(int)
-    df_feat['requires_road_closure'] = df_feat['requires_road_closure'].fillna(0).astype(int)
-    vuln = compute_junction_vulnerability(df_feat)
-    return df_feat, vuln, encoders, feat_cols
+    df_feat['resolution_minutes'] = t['resolution_minutes'].to_numpy()
+    df_feat['impact_level'] = t['impact_level'].to_numpy()
+    df_feat['cascade'] = t['cascade'].to_numpy()
+    df_feat['reliable'] = t['reliable'].to_numpy()
+    return df_feat
 
 
-def get_impact_label(level):
-    return {0: '🟢 Low', 1: '🟡 Medium', 2: '🟠 High', 3: '🔴 Critical'}.get(level, 'Unknown')
+@st.cache_data
+def load_metrics():
+    p = os.path.join(MODELS_DIR, 'metrics.json')
+    return json.load(open(p)) if os.path.exists(p) else {}
 
 
-IMPACT_COLORS = {0: '#2ECC71', 1: '#F1C40F', 2: '#E67E22', 3: '#E74C3C'}
+@st.cache_data
+def load_vuln():
+    p = os.path.join(DATA_DIR, 'junction_vulnerability.csv')
+    return pd.read_csv(p) if os.path.exists(p) else pd.DataFrame()
 
 
+def inference_row(p):
+    return pd.DataFrame([{
+        'event_type': p['event_type'], 'event_cause': p['event_cause'], 'priority': p['priority'],
+        'requires_road_closure': p['requires_road_closure'], 'corridor': p['corridor'],
+        'zone': p['zone'], 'junction': p.get('junction', 'unknown') or 'unknown',
+        'start_datetime': (pd.Timestamp('2024-01-01') + pd.Timedelta(hours=int(p.get('hour', 12)))).strftime('%Y-%m-%d %H:%M:%S'),
+        'resolved_datetime': None, 'closed_datetime': None, 'police_station': 'unknown',
+        'status': 'active', 'latitude': 12.97, 'longitude': 77.59,
+    }])
+
+
+# ===========================================================================
 def main():
-    st.title("🚦 CascadeIQ — Event Impact Forecasting & Response Intelligence System")
-    st.markdown("### *Predicting Event Escalation Before It Becomes Gridlock*")
-    st.markdown("---")
+    st.title("🚦 CascadeIQ — Event Impact Forecasting & Response Intelligence")
+    st.caption("Predicting event escalation before it becomes gridlock · Gridlock-Flipkart 2.0")
 
     df = load_dataset()
-
-    impact_model, res_model, cascade_model, vectorizer, tfidf_matrix, event_data, hotspots = load_all_models()
-    df_feat, junction_vuln, encoders, feat_cols = compute_features_and_vulnerability(df)
+    models, G, cen, (vec, mat, edata), hotspots = load_artifacts()
+    df_feat = compute_feat('v2')
+    metrics = load_metrics()
+    vuln = load_vuln()
 
     with st.sidebar:
-        st.image("https://img.icons8.com/fluency/96/traffic-jam.png", width=80)
         st.title("CascadeIQ")
-        st.caption("Gridlock-Flipkart 2.0")
+        st.caption("Event Impact Intelligence")
+        page = st.radio("Navigate", [
+            "📊 Dashboard Overview",
+            "🔮 Event Impact Prediction",
+            "🚨 Early Warning System",
+            "🛰️ Network Propagation",
+            "🕵️ Cascade Autopsy",
+            "🛩️ Traffic Black Box",
+            "⚠️ Junction Vulnerability",
+            "📍 Hotspot Analysis",
+            "🔍 Event Similarity Search",
+            "📋 Resource Recommendation",
+            "🔄 Digital Twin Simulator",
+            "🕸️ Knowledge Graph",
+            "📈 Post-Event Learning",
+            "🧠 Model Card",
+        ])
         st.markdown("---")
+        st.caption(f"Dataset: {len(df):,} events · {df['junction'].nunique()} junctions")
+        if metrics:
+            st.markdown("**Held-out performance**")
+            c = metrics.get('cascade', {})
+            i = metrics.get('impact', {})
+            st.metric("Cascade ROC-AUC", f"{c.get('roc_auc', 0):.3f}")
+            st.metric("Cascade Brier ↓", f"{c.get('brier_calibrated', 0):.3f}")
+            st.metric("Impact accuracy", f"{i.get('accuracy', 0):.1%}",
+                      delta=f"vs {i.get('majority_baseline', 0):.1%} baseline")
 
-        page = st.radio(
-            "Navigation",
-            [
-                "📊 Dashboard Overview",
-                "🔮 Event Impact Prediction",
-                "📍 Hotspot Analysis",
-                "⚠️ Junction Vulnerability",
-                "🔍 Event Similarity Search",
-                "🕵️ Cascade Autopsy",
-                "📋 Resource Recommendation",
-                "🔄 Digital Twin Simulator",
-                "🕸️ Knowledge Graph"
-            ]
-        )
-
-        st.markdown("---")
-        st.caption(f"Dataset: {len(df):,} events")
-        st.caption(f"Junctions: {df['junction'].nunique()}")
-        st.caption(f"Zones: {df['zone'].nunique()}")
-
-        if os.path.exists(os.path.join(MODELS_DIR, 'metrics.json')):
-            with open(os.path.join(MODELS_DIR, 'metrics.json')) as f:
-                metrics = json.load(f)
-            st.markdown("### Model Performance")
-            st.metric("Impact Accuracy", f"{metrics['impact_accuracy']:.1%}")
-            st.metric("Resolution MAE", f"{metrics['resolution_mae']:.0f} mins")
-            st.metric("Cascade Accuracy", f"{metrics['cascade_accuracy']:.1%}")
-
-    if page == "📊 Dashboard Overview":
-        show_dashboard(df, df_feat, junction_vuln)
-    elif page == "🔮 Event Impact Prediction":
-        show_prediction(df, df_feat, impact_model, res_model, cascade_model, encoders, feat_cols)
-    elif page == "📍 Hotspot Analysis":
-        show_hotspots(df, hotspots)
-    elif page == "⚠️ Junction Vulnerability":
-        show_vulnerability(junction_vuln)
-    elif page == "🔍 Event Similarity Search":
-        show_similarity(df, event_data, vectorizer, tfidf_matrix)
-    elif page == "🕵️ Cascade Autopsy":
-        show_autopsy(df, df_feat, impact_model, res_model, cascade_model, encoders, feat_cols)
-    elif page == "📋 Resource Recommendation":
-        show_resources(df_feat)
-    elif page == "🔄 Digital Twin Simulator":
-        show_digital_twin(df, impact_model, res_model, cascade_model, encoders)
-    elif page == "🕸️ Knowledge Graph":
-        show_knowledge_graph(df_feat)
-
-
-def show_dashboard(df, df_feat, junction_vuln):
-    st.header("📊 Operational Dashboard")
-
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Total Events", f"{len(df):,}", delta="8173 records")
-    with col2:
-        active = len(df[df['status'] == 'active'])
-        st.metric("Active Events", active, delta=f"{(active/len(df)*100):.1f}%")
-    with col3:
-        high_impact = len(df_feat[df_feat['impact_level'] >= 2])
-        st.metric("High/Critical Impact", high_impact, delta=f"{(high_impact/len(df_feat)*100):.1f}%")
-    with col4:
-        top_junc = junction_vuln.iloc[0]['junction'] if len(junction_vuln) > 0 else "N/A"
-        st.metric("Most Vulnerable", top_junc)
-
-    st.markdown("---")
-
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.subheader("Event Type Distribution")
-        type_counts = df['event_type'].value_counts()
-        fig = px.pie(values=type_counts.values, names=type_counts.index,
-                     color_discrete_sequence=px.colors.qualitative.Set2,
-                     hole=0.4)
-        fig.update_layout(height=350, margin=dict(t=0, b=0, l=0, r=0))
-        st.plotly_chart(fig, use_container_width=True)
-
-    with col2:
-        st.subheader("Impact Level Distribution")
-        impact_counts = df_feat['impact_level'].value_counts().sort_index()
-        labels = ['Low', 'Medium', 'High', 'Critical']
-        colors = [IMPACT_COLORS[i] for i in impact_counts.index]
-        fig = px.bar(x=labels, y=impact_counts.values,
-                     color=labels, color_discrete_sequence=colors)
-        fig.update_layout(height=350, xaxis_title="Impact Level",
-                         yaxis_title="Count", showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown("---")
-    col1, col2 = st.columns(2)
-
-    with col1:
-        st.subheader("Top Event Causes")
-        cause_counts = df['event_cause'].value_counts().head(8)
-        fig = px.bar(y=cause_counts.index, x=cause_counts.values,
-                     orientation='h', color=cause_counts.values,
-                     color_continuous_scale='YlOrRd')
-        fig.update_layout(height=350, xaxis_title="Count", yaxis_title="")
-        st.plotly_chart(fig, use_container_width=True)
-
-    with col2:
-        st.subheader("Events by Corridor")
-        corr_counts = df['corridor'].value_counts().head(10)
-        fig = px.bar(y=corr_counts.index, x=corr_counts.values,
-                     orientation='h', color=corr_counts.values,
-                     color_continuous_scale='Blues')
-        fig.update_layout(height=350, xaxis_title="Count", yaxis_title="")
-        st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown("---")
-    st.subheader("📈 Time Series: Events Over Time")
-    dates = pd.to_datetime(df['start_datetime'], utc=True, errors='coerce')
-    daily_counts = dates.dt.date.value_counts().sort_index()
-    fig = px.line(x=list(daily_counts.index), y=daily_counts.values,
-                  labels={'x': 'Date', 'y': 'Event Count'})
-    fig.update_layout(height=350)
-    st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown("---")
-    st.subheader("🏆 Top 10 Most Vulnerable Junctions")
-    col_config = {
-        'junction': 'Junction',
-        'risk_score': 'Risk Score (/10)',
-        'risk_category': 'Category',
-        'event_count': 'Events',
-        'avg_resolution_minutes': 'Avg Resolution (min)',
-        'high_priority_ratio': 'High Priority %',
-        'closure_ratio': 'Closure %'
+    pages = {
+        "📊 Dashboard Overview": lambda: page_dashboard(df, df_feat, vuln, metrics, cen),
+        "🔮 Event Impact Prediction": lambda: page_prediction(df, models),
+        "🚨 Early Warning System": lambda: page_early_warning(df, df_feat, models, G, cen),
+        "🛰️ Network Propagation": lambda: page_network(df, models, G, cen),
+        "🕵️ Cascade Autopsy": lambda: page_autopsy(df_feat, models, G),
+        "🛩️ Traffic Black Box": lambda: page_black_box(df_feat, models),
+        "⚠️ Junction Vulnerability": lambda: page_vulnerability(vuln),
+        "📍 Hotspot Analysis": lambda: page_hotspots(df, hotspots),
+        "🔍 Event Similarity Search": lambda: page_similarity(df, vec, mat, edata),
+        "📋 Resource Recommendation": lambda: page_resources(),
+        "🔄 Digital Twin Simulator": lambda: page_digital_twin(df, models),
+        "🕸️ Knowledge Graph": lambda: page_knowledge_graph(df_feat),
+        "📈 Post-Event Learning": lambda: page_post_event(df, df_feat, models),
+        "🧠 Model Card": lambda: page_model_card(metrics),
     }
-    display_df = junction_vuln.head(10)[list(col_config.keys())].copy()
-    display_df.columns = list(col_config.values())
-    st.dataframe(display_df, use_container_width=True, hide_index=True)
+    pages[page]()
 
 
-def show_prediction(df, df_feat, impact_model, res_model, cascade_model, encoders, feat_cols):
+# --------------------------------------------------------------------------- dashboard
+def page_dashboard(df, df_feat, vuln, metrics, cen):
+    st.header("📊 Operational Dashboard")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Total Events", f"{len(df):,}")
+    c2.metric("Active Now", int((df['status'].astype(str).str.lower() == 'active').sum()))
+    hi = int((df_feat['impact_level'] >= 2).sum())
+    c3.metric("High/Critical Impact", hi, delta=f"{hi/len(df_feat)*100:.0f}%")
+    c4.metric("Most Fragile Junction", vuln.iloc[0]['junction'] if len(vuln) else "N/A")
+
+    st.markdown("---")
+    a, b = st.columns(2)
+    with a:
+        st.subheader("Impact Distribution")
+        ic = df_feat['impact_level'].value_counts().sort_index()
+        fig = px.bar(x=[IMPACT_LABELS[i] for i in ic.index], y=ic.values,
+                     color=[IMPACT_LABELS[i] for i in ic.index],
+                     color_discrete_map={v: IMPACT_COLORS[k] for k, v in IMPACT_LABELS.items()})
+        fig.update_layout(height=320, showlegend=False, xaxis_title="", yaxis_title="Events")
+        st.plotly_chart(fig, width='stretch')
+    with b:
+        st.subheader("Top Event Causes")
+        cc = df['event_cause'].value_counts().head(8)
+        fig = px.bar(y=cc.index, x=cc.values, orientation='h', color=cc.values,
+                     color_continuous_scale='YlOrRd')
+        fig.update_layout(height=320, xaxis_title="Events", yaxis_title="",
+                          coloraxis_showscale=False)
+        st.plotly_chart(fig, width='stretch')
+
+    st.markdown("---")
+    st.subheader("📈 Events Over Time")
+    dts = pd.to_datetime(df['start_datetime'], utc=True, errors='coerce')
+    daily = dts.dt.date.value_counts().sort_index()
+    fig = px.area(x=list(daily.index), y=daily.values, labels={'x': 'Date', 'y': 'Events'})
+    fig.update_layout(height=300)
+    st.plotly_chart(fig, width='stretch')
+
+    st.markdown("---")
+    st.subheader("🏆 Most Structurally Fragile Junctions (betweenness-based)")
+    if len(vuln):
+        cols = [c for c in ['junction', 'risk_score', 'risk_category', 'betweenness_norm',
+                            'cascade_rate', 'event_count'] if c in vuln.columns]
+        st.dataframe(vuln.head(10)[cols], width='stretch', hide_index=True)
+
+
+# --------------------------------------------------------------------------- prediction
+def page_prediction(df, models):
     st.header("🔮 Event Impact Prediction")
-    st.markdown("Predict impact level, resolution time, and cascade probability for a new event.")
-
-    with st.form("prediction_form"):
-        col1, col2 = st.columns(2)
-
-        with col1:
-            event_type = st.selectbox("Event Type", ['unplanned', 'planned'])
-            event_cause = st.selectbox(
-                "Event Cause",
-                ['vehicle_breakdown', 'water_logging', 'tree_fall', 'accident',
-                 'construction', 'public_event', 'procession', 'vip_movement',
-                 'protest', 'pot_holes', 'congestion', 'road_conditions', 'others']
-            )
-            priority = st.selectbox("Priority", ['Low', 'High'])
-            requires_road_closure = st.checkbox("Requires Road Closure")
-
-        with col2:
+    st.caption("Impact, calibrated cascade risk, Time-To-Failure and the *why* (tree-SHAP).")
+    with st.form("predict"):
+        c1, c2 = st.columns(2)
+        with c1:
+            etype = st.selectbox("Event Type", ['unplanned', 'planned'])
+            cause = st.selectbox("Event Cause", CAUSES)
+            priority = st.selectbox("Priority", ['High', 'Low'])
+            closure = st.checkbox("Requires Road Closure")
+        with c2:
             corridor = st.selectbox("Corridor", sorted(df['corridor'].dropna().unique()))
             zone = st.selectbox("Zone", sorted(df['zone'].dropna().unique()))
-            junction = st.selectbox("Junction", ['Unknown'] + sorted(
-                [j for j in df['junction'].dropna().unique() if j != 'unknown']))
-            hour = st.slider("Hour of Day", 0, 23, 14)
-
-        submitted = st.form_submit_button("🔮 Predict Impact", type="primary")
-
-    if submitted:
-        input_data = pd.DataFrame([{
-            'event_type': event_type,
-            'event_cause': event_cause,
-            'priority': priority,
-            'requires_road_closure': requires_road_closure,
-            'corridor': corridor,
-            'zone': zone,
-            'junction': junction if junction != 'Unknown' else 'unknown',
-            'start_datetime': pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'resolved_datetime': None,
-            'closed_datetime': None,
-            'police_station': 'unknown',
-            'status': 'active',
-            'latitude': 12.97,
-            'longitude': 77.59
-        }])
-
-        try:
-            X_input, _, _, _, _ = engineer_features(
-                input_data, is_train=False, target_encoders=encoders
-            )
-        except Exception as e:
-            st.error(f"Feature engineering error: {e}")
-            return
-
-        impact_pred = impact_model.predict(X_input)[0]
-        impact_proba = impact_model.predict_proba(X_input)[0]
-
-        res_pred = predict_resolution(res_model, X_input)[0]
-
-        cascade_pred = cascade_model.predict(X_input)[0]
-        cascade_proba = cascade_model.predict_proba(X_input)[0]
-
-        resources = recommend_resources(
-            impact_pred, event_cause, requires_road_closure, corridor, hour
-        )
-
-        st.markdown("---")
-        st.subheader("📊 Prediction Results")
-
-        impact_label = get_impact_label(impact_pred)
-        confidence = float(max(impact_proba) * 100)
-
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Impact Level", impact_label)
-        with col2:
-            st.metric("Confidence", f"{confidence:.1f}%")
-        with col3:
-            st.metric("Expected Resolution", f"{res_pred:.0f} mins")
-        with col4:
-            cascade_risk = "High 🚨" if cascade_pred == 1 else "Low ✅"
-            st.metric("Cascade Risk", cascade_risk,
-                      delta=f"{cascade_proba[1]*100:.1f}% probability")
-
-        st.markdown("---")
-        st.subheader("📋 Resource Recommendation")
-
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("Officers Required", resources['officers'])
-        with col2:
-            st.metric("Barricades Required", resources['barricades'])
-        with col3:
-            st.metric("Monitoring", resources['monitoring'])
-        with col4:
-            st.metric("Diversion", resources['diversion'])
-
-        st.info(f"**{resources['description']}**")
-
-        st.markdown("---")
-        st.subheader("📈 Impact Probability Distribution")
-
-        proba_df = pd.DataFrame({
-            'Impact': ['Low', 'Medium', 'High', 'Critical'],
-            'Probability': impact_proba * 100
-        })
-        fig = px.bar(proba_df, x='Impact', y='Probability',
-                     color='Impact',
-                     color_discrete_map={
-                         'Low': '#2ECC71', 'Medium': '#F1C40F',
-                         'High': '#E67E22', 'Critical': '#E74C3C'
-                     },
-                     text_auto='.1f')
-        fig.update_layout(height=350, yaxis_title="Probability (%)")
-        fig.update_traces(texttemplate='%{text}%', textposition='outside')
-        st.plotly_chart(fig, use_container_width=True)
-
-
-def show_hotspots(df, hotspots):
-    st.header("📍 Hotspot Analysis")
-    st.markdown("Spatial clustering of events to identify recurring incident zones.")
-
-    cause_options = list(hotspots.keys()) if hotspots else ['No hotspots found']
-    selected_cause = st.selectbox("Select Event Cause", cause_options)
-
-    if hotspots and selected_cause in hotspots:
-        hotspot_df = hotspots[selected_cause]
-
-        st.subheader(f"Hotspot Clusters for: {selected_cause}")
-        st.dataframe(hotspot_df, use_container_width=True, hide_index=True)
-
-        fig = px.scatter_mapbox(
-            df[df['event_cause'] == selected_cause].dropna(subset=['latitude', 'longitude']).head(500),
-            lat='latitude', lon='longitude',
-            color='priority', size_max=10, zoom=11,
-            mapbox_style='carto-positron',
-            title=f"Event Locations: {selected_cause}"
-        )
-        for _, row in hotspot_df.iterrows():
-            fig.add_trace(go.Scattermapbox(
-                lat=[row['avg_lat']],
-                lon=[row['avg_lon']],
-                mode='markers+text',
-                marker=dict(size=row['count'] * 3, color='red', opacity=0.7),
-                text=[f"Cluster: {row['count']} events"],
-                textposition='top center',
-                name=f"Hotspot ({row['count']} events)"
-            ))
-        st.plotly_chart(fig, use_container_width=True)
-
-    st.markdown("---")
-    st.subheader("Overall Event Map")
-    map_df = df.dropna(subset=['latitude', 'longitude']).copy()
-    map_df['impact_category'] = pd.cut(
-        map_df['priority'].map({'High': 2, 'Low': 1}).fillna(1),
-        bins=[0, 1, 2], labels=['Low Priority', 'High Priority']
-    )
-
-    fig = px.scatter_mapbox(
-        map_df.sample(min(2000, len(map_df))),
-        lat='latitude', lon='longitude',
-        color='event_cause', size_max=8, zoom=10,
-        mapbox_style='carto-positron',
-        title="All Events (sampled)"
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-
-def show_vulnerability(junction_vuln):
-    st.header("⚠️ Junction Vulnerability Analysis")
-    st.markdown("Identify junctions most at risk during events.")
-
-    col1, col2 = st.columns([2, 1])
-    with col1:
-        top_n = st.slider("Number of junctions to display", 5, 50, 20)
-    with col2:
-        min_events = st.number_input("Minimum events", 1, 100, 5)
-
-    filtered = junction_vuln[junction_vuln['event_count'] >= min_events].copy()
-    display_df = filtered.head(top_n)
-
-    st.subheader(f"Top {top_n} Vulnerable Junctions (min {min_events} events)")
-
-    fig = px.bar(
-        display_df.head(15),
-        x='junction', y='risk_score',
-        color='risk_category',
-        color_discrete_map={
-            'Low': '#2ECC71', 'Medium': '#F1C40F',
-            'High': '#E67E22', 'Critical': '#E74C3C'
-        },
-        text_auto='.1f',
-        title="Junction Risk Scores"
-    )
-    fig.update_layout(height=450, xaxis_tickangle=-45)
-    st.plotly_chart(fig, use_container_width=True)
-
-    col_config = {
-        'junction': 'Junction',
-        'risk_score': 'Risk Score (/10)',
-        'risk_category': 'Category',
-        'event_count': 'Events',
-        'avg_resolution_minutes': 'Avg Resolution (min)',
-        'high_priority_ratio': 'High Priority %',
-        'closure_ratio': 'Closure %'
-    }
-    display_cols = [c for c in col_config.keys() if c in display_df.columns]
-    show_df = display_df[display_cols].copy()
-    show_df.columns = [col_config[c] for c in display_cols]
-    st.dataframe(show_df, use_container_width=True, hide_index=True)
-
-    st.markdown("---")
-    st.subheader("📊 Vulnerability Distribution")
-
-    cat_counts = filtered['risk_category'].value_counts()
-    fig = px.pie(
-        values=cat_counts.values, names=cat_counts.index,
-        color=cat_counts.index,
-        color_discrete_map={
-            'Low': '#2ECC71', 'Medium': '#F1C40F',
-            'High': '#E67E22', 'Critical': '#E74C3C'
-        },
-        hole=0.4,
-        title="Junction Risk Category Distribution"
-    )
-    st.plotly_chart(fig, use_container_width=True)
-
-
-def show_similarity(df, event_data, vectorizer, tfidf_matrix):
-    st.header("🔍 Event Similarity Search")
-    st.markdown("Find historical events similar to a given event.")
-
-    with st.form("similarity_form"):
-        col1, col2 = st.columns(2)
-        with col1:
-            s_event_type = st.selectbox("Event Type", ['unplanned', 'planned'], key='sim_type')
-            s_cause = st.selectbox("Event Cause", sorted(df['event_cause'].dropna().unique()), key='sim_cause')
-            s_priority = st.selectbox("Priority", ['Low', 'High'], key='sim_priority')
-        with col2:
-            s_corridor = st.selectbox("Corridor", ['Non-corridor'] + sorted(
-                [c for c in df['corridor'].dropna().unique() if c != 'Non-corridor']), key='sim_corridor')
-            s_zone = st.selectbox("Zone", sorted(df['zone'].dropna().unique()), key='sim_zone')
-            s_junction = st.selectbox("Junction", ['unknown'] + sorted(
-                df['junction'].dropna().unique().tolist()), key='sim_junction')
-
-        submitted = st.form_submit_button("🔍 Find Similar Events", type="primary")
-
-    if submitted and event_data is not None and vectorizer is not None:
-        query = {
-            'event_cause': s_cause,
-            'corridor': s_corridor,
-            'zone': s_zone,
-            'junction': s_junction,
-            'event_type': s_event_type,
-            'priority': s_priority,
-            'police_station': 'unknown'
-        }
-
-        results = find_similar_events(query, vectorizer, tfidf_matrix, event_data, top_k=5)
-
-        if results:
-            st.subheader("Top 5 Most Similar Historical Events")
-            st.caption("Similarity based on event characteristics (cause, location, type, priority)")
-
-            for i, r in enumerate(results):
-                impact = get_impact_label(r['impact_level'])
-                with st.container():
-                    cols = st.columns([0.1, 0.6, 0.3])
-                    with cols[0]:
-                        st.markdown(f"### {i + 1}")
-                    with cols[1]:
-                        st.markdown(f"**Cause:** {r['event_cause']} | **Corridor:** {r['corridor']} | **Zone:** {r['zone']}")
-                        st.markdown(f"**Junction:** {r.get('junction', 'N/A')} | **Priority:** {r['priority']}")
-                    with cols[2]:
-                        st.markdown(f"**Similarity:** {r['similarity_score']:.0%}")
-                        st.markdown(f"**Impact:** {impact}")
-                        st.markdown(f"**Resolution:** {r.get('resolution_minutes', 'N/A')} mins")
-
-                    if i < len(results) - 1:
-                        st.divider()
-        else:
-            st.warning("No similar events found.")
-
-    elif event_data is None:
-        st.warning("Similarity engine not available. Please train the model first.")
-
-
-def show_autopsy(df, df_feat, impact_model, res_model, cascade_model, encoders, feat_cols):
-    st.header("🕵️ Cascade Autopsy — Counterfactual Analysis")
-    st.markdown("**Discover the exact decision window where intervention could have prevented escalation.**")
-
-    resolved_df = df_feat[df_feat['status'].isin(['closed', 'resolved'])].dropna(
-        subset=['resolution_minutes']).copy()
-    resolved_df = resolved_df[resolved_df['resolution_minutes'] > 10]
-    resolved_df = resolved_df[resolved_df['resolution_minutes'] < 1440]
-
-    event_options = resolved_df.head(100)[['id', 'event_cause', 'corridor', 'junction',
-                                            'resolution_minutes', 'priority']].copy()
-    event_options['label'] = event_options.apply(
-        lambda r: f"[{r['id']}] {r['event_cause']} @ {r.get('junction', '?')} ({r['resolution_minutes']:.0f} mins)",
-        axis=1
-    )
-
-    selected_label = st.selectbox("Select a historical event for autopsy", event_options['label'].tolist())
-    selected_id = selected_label.split(']')[0].replace('[', '').strip()
-
-    if st.button("🔬 Run Cascade Autopsy", type="primary"):
-        event_row = resolved_df[resolved_df['id'] == selected_id]
-
-        if len(event_row) == 0:
-            st.error("Event not found.")
-            return
-
-        event_row = event_row.iloc[0]
-
-        impact = get_impact_label(event_row['impact_level'])
-        st.subheader(f"Event: {event_row['event_cause']} @ {event_row.get('junction', 'N/A')}")
-        st.caption(f"Actual Impact: {impact} | Resolution: {event_row['resolution_minutes']:.0f} mins")
-
-        X_event = pd.DataFrame([event_row.to_dict()])
-        try:
-            X_input, _, _, _, _ = engineer_features(
-                X_event, is_train=False, target_encoders=encoders
-            )
-        except Exception as e:
-            st.error(f"Feature extraction error: {e}")
-            return
-
-        pred_impact = impact_model.predict(X_input)[0]
-        pred_res = predict_resolution(res_model, X_input)[0]
-
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Actual Impact", impact)
-        with col2:
-            st.metric("Predicted Resolution", f"{pred_res:.0f} mins")
-        with col3:
-            st.metric("Actual Resolution", f"{event_row['resolution_minutes']:.0f} mins")
-
-        autopsy = estimate_point_of_no_return(
-            event_row.to_dict(), impact_model, engineer_features, encoders
-        )
-
-        st.markdown("---")
-        if autopsy:
-            st.subheader("🔍 Cascade Autopsy Results")
-            st.success("**Cascade Was Preventable!**")
-
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.metric("Point of No Return",
-                         autopsy['point_of_no_return_time'],
-                         delta=f"{autopsy['point_of_no_return_minutes']:.0f} min after start")
-            with col2:
-                st.metric("Decision Window",
-                         f"{autopsy['decision_window_minutes']} minutes",
-                         delta="Intervene here!")
-            with col3:
-                st.metric("Potential Delay Saved",
-                         f"{autopsy['potential_delay_saved']} minutes",
-                         delta="~60% reduction")
-
-            st.markdown("---")
-            st.subheader("⏱️ Reality vs Counterfactual Timeline")
-
-            col1, col2 = st.columns(2)
-            with col1:
-                st.markdown("#### ❌ Reality")
-                reality_timeline = [
-                    f"**{autopsy['event_start']}** — Event Started",
-                    f"**{autopsy['point_of_no_return_time']}** — ❌ Point of No Return (missed)",
-                    f"**{autopsy['event_start_dt'][11:16]}** — Congestion peaks",
-                    f"**Resolved at +{autopsy['actual_resolution_minutes']}min** — Gridlock"
-                ]
-                for item in reality_timeline:
-                    st.markdown(f"- {item}")
-
-            with col2:
-                st.markdown("#### ✅ Counterfactual (What If)")
-                decision_time = (pd.to_datetime(autopsy['event_start_dt']) +
-                                timedelta(minutes=autopsy['point_of_no_return_minutes']))
-                intervention_time = decision_time - timedelta(minutes=5)
-                cf_timeline = [
-                    f"**{autopsy['event_start']}** — Event Started",
-                    f"**{intervention_time.strftime('%H:%M')}** — ⚡ Intervention Activated",
-                    f"**{autopsy['point_of_no_return_time']}** — 🛑 Cascade Stopped",
-                    f"**Resolved at +{autopsy['potential_delay_saved']}min** — Normal Flow"
-                ]
-                for item in cf_timeline:
-                    st.markdown(f"- {item}")
-
-        timeline = generate_timeline(event_row.to_dict(), autopsy)
-        if timeline:
-            st.markdown("---")
-            st.subheader("⏳ Event Timeline")
-            for t in timeline:
-                if t['type'] == 'critical':
-                    st.error(f"**{t['time']}** — {t['event']}")
-                elif t['type'] == 'escalation':
-                    st.warning(f"**{t['time']}** — {t['event']}")
-                elif t['type'] == 'active':
-                    st.info(f"**{t['time']}** — {t['event']}")
-                else:
-                    st.info(f"**{t['time']}** — {t['event']}")
-
-
-def show_resources(df_feat):
-    st.header("📋 Resource Recommendation Engine")
-    st.markdown("Get data-driven resource recommendations for event management.")
-
-    col1, col2 = st.columns(2)
-    with col1:
-        r_event_cause = st.selectbox("Event Cause",
-            ['vehicle_breakdown', 'water_logging', 'tree_fall', 'accident',
-             'construction', 'public_event', 'procession', 'vip_movement',
-             'protest', 'pot_holes', 'congestion', 'road_conditions', 'others'])
-        r_priority = st.selectbox("Priority", ['Low', 'High'])
-    with col2:
-        r_corridor = st.selectbox("Corridor",
-            ['Non-corridor', 'ORR East 1', 'ORR North 1', 'Bellary Road 1',
-             'Tumkur Road', 'Mysore Road', 'Hosur Road', 'Magadi Road',
-             'Old Madras Road', 'Bannerghata Road'])
-        r_hour = st.slider("Hour of Day", 0, 23, 14)
-        r_closure = st.checkbox("Requires Road Closure")
-
-    if st.button("📋 Get Recommendations", type="primary"):
-        r_impact_level = 2 if r_priority == 'High' else 0
-        if r_event_cause in ['public_event', 'procession']:
-            r_impact_level = max(r_impact_level, 2)
-        if r_closure:
-            r_impact_level = min(r_impact_level + 1, 3)
-
-        resources = recommend_resources(
-            r_impact_level, r_event_cause, r_closure, r_corridor, r_hour
-        )
-
-        st.markdown("---")
-        st.subheader("📊 Recommended Resource Deployment")
-
-        impact_label = get_impact_label(r_impact_level)
-        st.metric("Predicted Impact Level", impact_label)
-
-        col1, col2, col3, col4 = st.columns(4)
-        with col1:
-            st.metric("👮 Officers", resources['officers'],
-                     help="Number of traffic police officers needed")
-        with col2:
-            st.metric("🚧 Barricades", resources['barricades'],
-                     help="Number of barricades needed")
-        with col3:
-            st.metric("📡 Monitoring", resources['monitoring'],
-                     help="Monitoring priority level")
-        with col4:
-            st.metric("🔄 Diversion", resources['diversion'],
-                     help="Diversion planning requirement")
-
-        st.info(f"**{resources['description']}**")
-
-        st.markdown("---")
-        st.subheader("📈 Resource Allocation Reference")
-        ref_data = []
-        for level, info in IMPACT_RESOURCE_MAP.items():
-            ref_data.append({
-                'Impact': info['impact'],
-                'Officers': info['officers'],
-                'Barricades': info['barricades'],
-                'Monitoring': info['monitoring'],
-                'Diversion': info['diversion']
-            })
-        ref_df = pd.DataFrame(ref_data)
-        st.dataframe(ref_df, use_container_width=True, hide_index=True)
-
-        st.markdown("---")
-        st.subheader("📊 Resource Comparison")
-        impacts = ['Low', 'Medium', 'High', 'Critical']
-        officers_base = [2, 5, 10, 15]
-        barricades_base = [2, 6, 14, 20]
-
-        fig = go.Figure()
-        fig.add_trace(go.Bar(name='Officers', x=impacts, y=officers_base,
-                            marker_color='#3498DB'))
-        fig.add_trace(go.Bar(name='Barricades', x=impacts, y=barricades_base,
-                            marker_color='#E74C3C'))
-        fig.update_layout(barmode='group', height=400,
-                         title="Default Resource Requirements by Impact Level")
-        st.plotly_chart(fig, use_container_width=True)
-
-        st.markdown("---")
-        st.info("""
-        **How resources are calculated:**
-        - Base resources are determined by impact level
-        - Event cause modifiers adjust officer/barricade counts
-        - Peak hours (8-10 AM, 5-8 PM) increase requirements by 20%
-        - Road closure increases barricade needs by 50%
-        - Major corridors add 10% to resource requirements
-        """)
-        
-        
-def show_digital_twin(df, impact_model, res_model, cascade_model, encoders):
-    st.header("🔄 Traffic Digital Twin Simulator")
-    st.markdown("**Compare multiple event scenarios side-by-side to assess impact before it happens.**")
-
-    df = load_dataset()
-
-    if 'scenarios' not in st.session_state:
-        st.session_state.scenarios = []
-    if 'scenario_results' not in st.session_state:
-        st.session_state.scenario_results = []
-
-    with st.expander("➕ Add a Scenario", expanded=len(st.session_state.scenarios) == 0):
-        with st.form("scenario_form"):
-            col1, col2 = st.columns(2)
-            with col1:
-                scenario_name = st.text_input("Scenario Name", value=f"Scenario {len(st.session_state.scenarios) + 1}")
-                twin_event_type = st.selectbox("Event Type", ['unplanned', 'planned'], key='twin_type')
-                twin_event_cause = st.selectbox(
-                    "Event Cause",
-                    ['vehicle_breakdown', 'water_logging', 'tree_fall', 'accident',
-                     'construction', 'public_event', 'procession', 'vip_movement',
-                     'protest', 'pot_holes', 'congestion', 'road_conditions', 'others'],
-                    key='twin_cause'
-                )
-                twin_priority = st.selectbox("Priority", ['Low', 'High'], key='twin_priority')
-            with col2:
-                twin_corridor = st.selectbox("Corridor", sorted(df['corridor'].dropna().unique()), key='twin_corridor')
-                twin_zone = st.selectbox("Zone", sorted(df['zone'].dropna().unique()), key='twin_zone')
-                twin_junction = st.selectbox("Junction", ['Unknown'] + sorted(
-                    [j for j in df['junction'].dropna().unique() if j != 'unknown']), key='twin_junction')
-                twin_hour = st.slider("Hour of Day", 0, 23, 14, key='twin_hour')
-                twin_closure = st.checkbox("Requires Road Closure", key='twin_closure')
-
-            if st.form_submit_button("➕ Add to Comparison", type="primary"):
-                params = {
-                    'name': scenario_name,
-                    'event_type': twin_event_type,
-                    'event_cause': twin_event_cause,
-                    'priority': twin_priority,
-                    'requires_road_closure': twin_closure,
-                    'corridor': twin_corridor,
-                    'zone': twin_zone,
-                    'junction': twin_junction,
-                    'hour': twin_hour
-                }
-                st.session_state.scenarios.append(params)
-                st.rerun()
-
-    if st.session_state.scenarios:
-        st.markdown("### 🎯 Scenarios Queued for Comparison")
-
-        for i, s in enumerate(st.session_state.scenarios):
-            loc_display = s['junction'] if s['junction'] != 'Unknown' else f"{s['corridor']}"
-            cols = st.columns([0.05, 0.25, 0.2, 0.2, 0.25, 0.05])
-            with cols[0]:
-                st.write(f"{i + 1}")
-            with cols[1]:
-                st.write(f"**{s['name']}**")
-            with cols[2]:
-                st.write(f"{s['event_cause']}")
-            with cols[3]:
-                st.write(f"{s['priority']} priority")
-            with cols[4]:
-                st.write(f"📍 {loc_display}")
-            with cols[5]:
-                if st.button("✕", key=f"remove_scenario_{i}"):
-                    st.session_state.scenarios.pop(i)
-                    st.session_state.scenario_results = []
-                    st.rerun()
-
-        col1, col2 = st.columns([1, 5])
-        with col1:
-            if st.button("🔄 Run Comparison", type="primary"):
-                with st.spinner("Simulating scenarios..."):
-                    st.session_state.scenario_results = compare_scenarios(
-                        st.session_state.scenarios, impact_model, res_model, cascade_model, encoders
-                    )
-                st.rerun()
-
-        with col2:
-            if st.session_state.scenario_results:
-                if st.button("🗑️ Clear All"):
-                    st.session_state.scenarios = []
-                    st.session_state.scenario_results = []
-                    st.rerun()
-
-    if st.session_state.scenario_results:
-        st.markdown("### 📊 Scenario Comparison Results")
-
-        results_df = scenarios_to_dataframe(st.session_state.scenario_results)
-        st.dataframe(results_df, use_container_width=True, hide_index=True)
-
-        chart_df = results_df.copy()
-        chart_df['Resolution (min)'] = pd.to_numeric(chart_df['Resolution (min)'], errors='coerce')
-
-        color_map = {'Low': '#2ECC71', 'Medium': '#F1C40F', 'High': '#E67E22', 'Critical': '#E74C3C'}
-        chart_df['color'] = chart_df['Impact Level'].map(color_map).fillna('#95A5A6')
-        chart_df['label'] = chart_df.apply(
-            lambda r: f"{r['Impact Level']}<br>{r['Resolution (min)']:.0f} min", axis=1)
-
-        fig = go.Figure()
-        fig.add_trace(go.Bar(
-            x=chart_df['Scenario'].tolist(),
-            y=chart_df['Resolution (min)'].tolist(),
-            text=chart_df['label'].tolist(),
-            textposition='inside',
-            marker_color=chart_df['color'].tolist()
-        ))
-        fig.update_layout(
-            title="Resolution Time by Scenario",
-            yaxis_title="Minutes",
-            height=400
-        )
-        st.plotly_chart(fig, use_container_width=True)
-
-        with st.expander("📈 Detailed Comparison by Metric"):
-            metric_chart_df = results_df.copy()
-            for col in ['Resolution (min)', 'Confidence', 'Cascade Prob.']:
-                if col in metric_chart_df.columns:
-                    metric_chart_df[col] = pd.to_numeric(
-                        metric_chart_df[col].astype(str).str.rstrip('%'), errors='coerce'
-                    )
-
-            fig2 = go.Figure()
-            for col in ['Resolution (min)', 'Confidence', 'Cascade Prob.']:
-                if col in metric_chart_df.columns:
-                    fig2.add_trace(go.Bar(
-                        name=col,
-                        x=metric_chart_df['Scenario'],
-                        y=metric_chart_df[col],
-                        text=[f"{v:.1f}" if isinstance(v, (int, float)) else str(v) for v in metric_chart_df[col]],
-                        textposition='outside'
-                    ))
-            fig2.update_layout(
-                title="Multi-Metric Scenario Comparison",
-                yaxis_title="Value",
-                barmode='group',
-                height=400
-            )
-            st.plotly_chart(fig2, use_container_width=True)
-
-
-def show_knowledge_graph(df_feat):
-    st.header("🕸️ Knowledge Graph — Event Relationship Analysis")
-    st.markdown("**Explore multi-dimensional relationships between events based on shared cause, location, and type.**")
-
-    with st.sidebar:
-        st.subheader("Knowledge Graph Filters")
-        max_nodes = st.slider("Max Events", 20, 100, 50, key='kg_nodes')
-        min_sim = st.slider("Min Similarity", 0.05, 0.8, 0.2, 0.05, key='kg_sim')
-        causes = ['All'] + sorted(df_feat['event_cause'].dropna().unique().tolist())
-        selected_cause = st.selectbox("Event Cause", causes, key='kg_cause')
-        zones = ['All'] + sorted(df_feat['zone'].dropna().unique().tolist())
-        selected_zone = st.selectbox("Zone", zones, key='kg_zone')
-        color_by = st.selectbox("Color Nodes By", ['event_cause', 'impact_level', 'priority', 'zone'],
-                                key='kg_color')
-
-    with st.spinner("Building knowledge graph..."):
-        nodes_df, edges_df = build_event_graph(
-            df_feat, max_nodes=max_nodes, min_similarity=min_sim,
-            filter_cause=selected_cause, filter_zone=selected_zone
-        )
-
-    if nodes_df.empty:
-        st.warning("Not enough connected events to build a graph. Try increasing max events or lowering the similarity threshold.")
+            junction = st.selectbox("Junction", ['unknown'] + sorted(
+                [j for j in df['junction'].dropna().unique() if str(j).lower() != 'unknown']))
+            hour = st.slider("Hour of Day", 0, 23, 18)
+        go_pred = st.form_submit_button("🔮 Predict", type="primary")
+
+    if not go_pred:
         return
+    p = dict(event_type=etype, event_cause=cause, priority=priority,
+             requires_road_closure=closure, corridor=corridor, zone=zone,
+             junction=junction, hour=hour)
+    X, _, _, cols = engineer_features(inference_row(p), is_train=False, encoders=models['encoders'])
+    impact = int(models['impact'].predict(X)[0])
+    proba = models['impact'].predict_proba(X)[0]
+    resolution = display_resolution(predict_resolution(models['resolution'], X)[0], cause, models['encoders'])
+    cascade_p = float(predict_cascade_proba(models['cascade'], models['calibrator'], X)[0])
+    frag = float(models['cmap'].get(junction.lower().replace(' ', ''), {}).get('betweenness_norm', 0.0))
+    peak = (8 <= hour <= 10) or (17 <= hour <= 20)
+    ttf = estimate_ttf(cascade_p, impact, resolution, frag, peak)
 
-    stats = get_graph_stats(nodes_df, edges_df)
-    col1, col2, col3, col4 = st.columns(4)
-    with col1:
-        st.metric("Events (Nodes)", stats['nodes'])
-    with col2:
-        st.metric("Connections (Edges)", stats['edges'])
-    with col3:
-        st.metric("Clusters", stats['clusters'])
-    with col4:
-        st.metric("Avg Connections/Event", stats['avg_degree'])
+    st.markdown("---")
+    m = st.columns(4)
+    m[0].metric("Impact", IMPACT_EMOJI[impact], delta=f"{proba.max()*100:.0f}% confidence")
+    m[1].metric("Est. Resolution", f"{resolution:.0f} min", help="Historical-anchored estimate")
+    m[2].metric("Cascade Risk", f"{cascade_p*100:.0f}%",
+                delta="calibrated", delta_color="off")
+    m[3].metric("⏱ Time-To-Failure", f"{ttf['time_to_failure_min']:.0f} min",
+                delta=ttf['risk_level'], delta_color="inverse")
+    st.info(f"**Decision window:** {ttf['headline']}")
 
-    edge_traces = []
-    if not edges_df.empty:
-        edge_x = []
-        edge_y = []
-        for _, e in edges_df.iterrows():
-            src = nodes_df[nodes_df['id'] == e['source']].iloc[0]
-            tgt = nodes_df[nodes_df['id'] == e['target']].iloc[0]
-            edge_x.extend([src['x'], tgt['x'], None])
-            edge_y.extend([src['y'], tgt['y'], None])
-        edge_traces.append(go.Scatter(
-            x=edge_x, y=edge_y,
-            mode='lines',
-            line=dict(width=0.5, color='#888'),
-            hoverinfo='none',
-            showlegend=False
-        ))
+    res = recommend_resources(impact, cause, closure, corridor, hour)
+    r = st.columns(4)
+    r[0].metric("👮 Officers", res['officers'])
+    r[1].metric("🚧 Barricades", res['barricades'])
+    r[2].metric("📡 Monitoring", res['monitoring'])
+    r[3].metric("🔄 Diversion", res['diversion'])
 
-    if color_by == 'impact_level':
-        nodes_df['color_group'] = nodes_df['impact_level'].map({0: 'Low', 1: 'Medium', 2: 'High', 3: 'Critical'})
+    st.markdown("---")
+    a, b = st.columns([1, 1])
+    with a:
+        st.subheader("Impact Probability")
+        pdf = pd.DataFrame({'Impact': [IMPACT_LABELS[i] for i in range(len(proba))],
+                            'Probability': proba * 100})
+        fig = px.bar(pdf, x='Impact', y='Probability', color='Impact',
+                     color_discrete_map={v: IMPACT_COLORS[k] for k, v in IMPACT_LABELS.items()},
+                     text_auto='.0f')
+        fig.update_layout(height=320, showlegend=False, yaxis_title="%")
+        st.plotly_chart(fig, width='stretch')
+    with b:
+        st.subheader("Why this prediction? (tree-SHAP)")
+        expl = explain_prediction(models['impact'], X[0], cols, top_k=7, predicted_class=impact)
+        st.plotly_chart(waterfall_figure(expl, ''), width='stretch')
+
+    # log the prediction for the post-event learning loop
+    post_event.log_prediction({
+        'event_id': f"live-{cause}-{junction}", 'event_cause': cause, 'junction': junction,
+        'corridor': corridor, 'predicted_impact': impact, 'predicted_resolution': resolution,
+        'predicted_cascade_prob': cascade_p})
+    st.caption("✓ Prediction logged to the Post-Event Learning store.")
+
+
+# --------------------------------------------------------------------------- early warning
+def page_early_warning(df, df_feat, models, G, cen):
+    st.header("🚨 Early Warning System")
+    st.caption("Pre-event risk index + recommended deployment lead time — act *before* the event.")
+    with st.form("ew"):
+        c1, c2 = st.columns(2)
+        with c1:
+            etype = st.selectbox("Event Type", ['planned', 'unplanned'])
+            cause = st.selectbox("Event Cause", CAUSES, index=5)
+            priority = st.selectbox("Priority", ['High', 'Low'])
+            closure = st.checkbox("Road Closure", value=True)
+        with c2:
+            corridor = st.selectbox("Corridor", sorted(df['corridor'].dropna().unique()))
+            zone = st.selectbox("Zone", sorted(df['zone'].dropna().unique()))
+            junction = st.selectbox("Junction", ['unknown'] + sorted(
+                [j for j in df['junction'].dropna().unique() if str(j).lower() != 'unknown']))
+            hour = st.slider("Planned Start Hour", 0, 23, 18)
+        go_ew = st.form_submit_button("🚨 Assess Risk", type="primary")
+
+    if go_ew:
+        p = dict(event_type=etype, event_cause=cause, priority=priority,
+                 requires_road_closure=closure, corridor=corridor, zone=zone,
+                 junction=junction, hour=hour)
+        r = early_warning.assess_event(p, models['impact'], models['resolution'],
+                                       models['cascade'], models['calibrator'],
+                                       models['encoders'], engineer_features, models['cmap'])
+        st.markdown("---")
+        col1, col2 = st.columns([1, 2])
+        with col1:
+            fig = go.Figure(go.Indicator(
+                mode="gauge+number", value=r['risk_index'],
+                title={'text': r['risk_band']},
+                gauge={'axis': {'range': [0, 100]}, 'bar': {'color': r['risk_color']},
+                       'steps': [{'range': [0, 20], 'color': '#eafaf1'},
+                                 {'range': [20, 40], 'color': '#fef9e7'},
+                                 {'range': [40, 66], 'color': '#fdebd0'},
+                                 {'range': [66, 100], 'color': '#fadbd8'}]}))
+            fig.update_layout(height=300, margin=dict(t=40, b=10))
+            st.plotly_chart(fig, width='stretch')
+        with col2:
+            st.metric("Recommended deployment lead time", f"{r['lead_time_hours']:.0f} hours before start")
+            st.metric("⏱ Time-To-Failure (est.)", f"{r['ttf']['time_to_failure_min']:.0f} min")
+            st.markdown("**Triggers:**")
+            for t in r['triggers']:
+                st.markdown(f"- {t}")
+        st.success(f"**{r['recommendation']}**")
+
+    st.markdown("---")
+    st.subheader("🌐 Live City-Wide Risk (active events)")
+    active = df_feat[df_feat['status'].astype(str).str.lower() == 'active'].copy()
+    cr = early_warning.city_risk(active.head(40), G, cen)
+    if cr.get('active_events'):
+        cc = st.columns(3)
+        cc[0].metric("Active Events", cr['active_events'])
+        cc[1].metric("Sources on network", len(cr.get('source_junctions', [])))
+        cc[2].metric("Percolation precursor", f"{cr['precursor_min']:.0f} min"
+                     if cr.get('precursor_min') else "—")
+        curve = cr.get('percolation_curve')
+        if curve is not None and len(curve):
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=curve['time_min'], y=curve['clusters'],
+                                     name='Congested clusters', line=dict(color='#E67E22')))
+            fig.add_trace(go.Scatter(x=curve['time_min'], y=curve['giant_component'],
+                                     name='Giant component', line=dict(color='#E74C3C')))
+            if cr.get('precursor_min'):
+                fig.add_vline(x=cr['precursor_min'], line_dash='dash',
+                              annotation_text='Peak-cluster precursor')
+            fig.update_layout(height=320, xaxis_title="minutes", yaxis_title="junctions",
+                              title="Percolation: clusters merge into a giant component at collapse")
+            st.plotly_chart(fig, width='stretch')
+
+
+# --------------------------------------------------------------------------- network propagation
+def page_network(df, models, G, cen):
+    st.header("🛰️ Network Propagation Engine")
+    st.caption("Road-network graph of 294 junctions · betweenness fragility · cascade spread.")
+    junctions = sorted(cen['junction'].tolist())
+    default = cen.iloc[0]['junction']
+    src = st.selectbox("Source junction (where disruption starts)", junctions,
+                       index=junctions.index(default))
+    speed = st.slider("Cascade spread speed (km/h)", 8, 40, 18)
+
+    prop = simulate_propagation(G, src, cen, spread_speed_kmph=speed)
+    if prop.empty:
+        st.warning("No propagation from this junction.")
+        return
+    tmax = float(prop['time_to_impact_min'].max())
+    t = st.slider("Time since onset (minutes)", 0.0, round(tmax, 1), round(min(20.0, tmax), 1))
+    snap = prop[prop['time_to_impact_min'] <= t]
+
+    c1, c2, c3 = st.columns(3)
+    c1.metric("Junctions reached", f"{len(snap)} / {len(prop)}")
+    c2.metric("At-risk (stressed)", int(snap['at_risk'].sum()))
+    stats, crit = percolation_early_warning(G, prop)
+    c3.metric("Network-critical at", f"{crit:.0f} min" if crit else "—")
+
+    snap = snap.assign(sz=snap['stress_level'] * 18 + 5)
+    fig = px.scatter_mapbox(snap, lat='latitude', lon='longitude', color='stress_level',
+                            size='sz', color_continuous_scale='YlOrRd',
+                            range_color=[0, 1], zoom=10.5, mapbox_style='carto-positron',
+                            hover_name='junction', height=480)
+    s = prop[prop['is_source']].iloc[0]
+    fig.add_trace(go.Scattermapbox(lat=[s['latitude']], lon=[s['longitude']], mode='markers',
+                                   marker=dict(size=20, color='blue'), name='Source'))
+    st.plotly_chart(fig, width='stretch')
+
+    a, b = st.columns(2)
+    with a:
+        st.subheader("Collapse curve")
+        if len(stats):
+            fig = px.area(stats, x='time_min', y='giant_frac',
+                          labels={'giant_frac': 'stressed network fraction', 'time_min': 'minutes'})
+            fig.add_hline(y=0.5, line_dash='dash', annotation_text='network-critical (50%)')
+            fig.update_layout(height=300)
+            st.plotly_chart(fig, width='stretch')
+    with b:
+        st.subheader("🔀 Diversion candidates")
+        st.caption(f"If **{src}** is blocked, route through low-fragility bypasses:")
+        div = diversion_candidates(G, cen, src)
+        if len(div):
+            st.dataframe(div[['junction', 'corridor', 'fragility', 'spare_capacity']],
+                         width='stretch', hide_index=True)
+        else:
+            st.info("No bypass candidates found.")
+
+
+# --------------------------------------------------------------------------- cascade autopsy
+def page_autopsy(df_feat, models, G):
+    st.header("🕵️ Cascade Autopsy — Counterfactual Analysis")
+    st.caption("Replay a historical event; find the decision window and the preventable share.")
+    pool = df_feat[(df_feat['reliable']) & (df_feat['impact_level'] >= 1)].copy()
+    pool = pool[pool['junction'].astype(str).str.lower() != 'unknown']
+    pool['lbl'] = pool.apply(lambda r: f"[{r['id']}] {r['event_cause']} @ {r['junction']} "
+                             f"({r['resolution_minutes']:.0f}min, {IMPACT_LABELS[int(r['impact_level'])]})", axis=1)
+    pool = pool.sort_values('impact_level', ascending=False).head(150)
+    choice = st.selectbox("Select event", pool['lbl'].tolist())
+    if not st.button("🔬 Run Autopsy", type="primary"):
+        return
+    eid = choice.split(']')[0].strip('[')
+    row = pool[pool['id'].astype(str) == eid].iloc[0].to_dict()
+    r = cascade_autopsy.run_autopsy(row, models['impact'], models['resolution'], models['cascade'],
+                                    models['calibrator'], models['encoders'], engineer_features,
+                                    models['cmap'], G)
+    base = r['base']
+    st.markdown("---")
+    c = st.columns(4)
+    c[0].metric("Predicted Impact", IMPACT_LABELS[base['impact']])
+    c[1].metric("Cascade Prob.", f"{base['cascade_p']*100:.0f}%")
+    c[2].metric("⏱ Point of No Return", r['point_of_no_return_time'],
+                delta=f"{r['decision_window_min']:.0f} min window")
+    c[3].metric("Network-critical", f"{r['network_critical_min']:.0f} min"
+                if r['network_critical_min'] else "—")
+
+    st.markdown("---")
+    if r['preventable'] and r['best_counterfactual']:
+        st.success(f"**Preventable** — {r['best_counterfactual']['lever']} cuts cascade risk by "
+                   f"{r['cascade_reduction']*100:.0f}%.")
+        cf = r['best_counterfactual']
+        a, b = st.columns(2)
+        with a:
+            st.markdown("#### ❌ Reality")
+            st.markdown(f"- Impact: **{IMPACT_LABELS[base['impact']]}**")
+            st.markdown(f"- Cascade risk: **{base['cascade_p']*100:.0f}%**")
+            st.markdown(f"- TTF: **{base['ttf']['time_to_failure_min']:.0f} min**")
+        with b:
+            st.markdown(f"#### ✅ Counterfactual — {cf['lever']}")
+            st.markdown(f"- Impact: **{IMPACT_LABELS[cf['impact']]}**")
+            st.markdown(f"- Cascade risk: **{cf['cascade_p']*100:.0f}%**")
+            st.markdown(f"- TTF: **{cf['ttf']['time_to_failure_min']:.0f} min**")
     else:
-        nodes_df['color_group'] = nodes_df[color_by]
+        st.info("No single lever materially prevents escalation for this event "
+                "(low controllable risk, or already minor).")
 
-    color_palette = px.colors.qualitative.Set2 + px.colors.qualitative.Set3
-    unique_groups = nodes_df['color_group'].unique()
-    group_colors = {g: color_palette[i % len(color_palette)] for i, g in enumerate(sorted(unique_groups))}
-    node_colors = nodes_df['color_group'].map(group_colors).tolist()
+    if len(r['propagation']):
+        st.markdown("---")
+        st.subheader("Stress spread from event junction")
+        prop_viz = r['propagation'].assign(sz=r['propagation']['stress_level'] * 15 + 4)
+        fig = px.scatter_mapbox(prop_viz, lat='latitude', lon='longitude',
+                                color='stress_level', color_continuous_scale='YlOrRd',
+                                size='sz', zoom=10.5, mapbox_style='carto-positron', height=420)
+        st.plotly_chart(fig, width='stretch')
 
-    def fmt_location(r):
-        parts = []
-        if r['junction'] != 'unknown':
-            parts.append(r['junction'])
-        if r['corridor'] != 'unknown':
-            parts.append(r['corridor'])
-        if r['zone'] != 'unknown':
-            parts.append(r['zone'])
-        return ', '.join(parts) if parts else 'Unknown'
 
-    node_labels = nodes_df.apply(
-        lambda r: r['corridor'] if r['corridor'] != 'unknown'
-                  else (r['zone'] if r['zone'] != 'unknown' else ''),
-        axis=1
-    ).tolist()
+# --------------------------------------------------------------------------- black box
+def page_black_box(df_feat, models):
+    st.header("🛩️ Traffic Black Box")
+    st.caption("Post-event reconstruction · root-cause analysis · avoidable-delay accounting.")
+    pool = df_feat[df_feat['reliable']].copy()
+    pool = pool[pool['junction'].astype(str).str.lower() != 'unknown']
+    pool['lbl'] = pool.apply(lambda r: f"[{r['id']}] {r['event_cause']} @ {r['junction']} "
+                             f"({r['resolution_minutes']:.0f}min)", axis=1)
+    pool = pool.sort_values('resolution_minutes', ascending=False).head(150)
+    choice = st.selectbox("Select resolved event", pool['lbl'].tolist())
+    if not st.button("🛩️ Open Black Box", type="primary"):
+        return
+    eid = choice.split(']')[0].strip('[')
+    row = pool[pool['id'].astype(str) == eid].iloc[0].to_dict()
 
-    node_trace = go.Scatter(
-        x=nodes_df['x'], y=nodes_df['y'],
-        mode='markers+text',
-        text=node_labels,
-        textposition='top center',
-        textfont=dict(size=8, color='#333'),
-        marker=dict(
-            size=nodes_df['degree'].clip(lower=5, upper=25).tolist(),
-            color=node_colors,
-            line=dict(width=1, color='#333'),
-            opacity=0.85
-        ),
-        customdata=nodes_df.apply(
-            lambda r: [
-                r['event_cause'],
-                fmt_location(r),
-                r['priority'],
-                ['Low', 'Medium', 'High', 'Critical'][min(int(r['impact_level']), 3)],
-                f"{r['resolution_minutes']:.0f}",
-                str(r['degree'])
-            ],
-            axis=1
-        ).tolist(),
-        hovertemplate=(
-            "<b>%{customdata[0]}</b><br>"
-            "📍 %{customdata[1]}<br>"
-            "Priority: %{customdata[2]}<br>"
-            "Impact: %{customdata[3]} | Resolution: %{customdata[4]} min<br>"
-            "Connections: %{customdata[5]}<extra></extra>"
-        ),
-        showlegend=False
-    )
+    tl, dur = black_box.reconstruct_timeline(row)
+    rca = black_box.root_cause_analysis(row, models['impact'], models['encoders'], engineer_features)
+    av = black_box.avoidable_delay(row, df_feat)
 
-    fig = go.Figure(data=edge_traces + [node_trace])
-    fig.update_layout(
-        title=f"Knowledge Graph — {stats['nodes']} events, {stats['edges']} connections, {stats['clusters']} clusters",
-        showlegend=False,
-        hovermode='closest',
-        height=600,
-        xaxis=dict(showgrid=False, zeroline=False, visible=False),
-        yaxis=dict(showgrid=False, zeroline=False, visible=False),
-        plot_bgcolor='rgba(0,0,0,0)',
-        margin=dict(l=10, r=10, t=40, b=10)
-    )
-    st.plotly_chart(fig, use_container_width=True)
+    st.markdown("---")
+    a, b = st.columns([1, 1])
+    with a:
+        st.subheader("⏱ Reconstruction")
+        for s in tl:
+            tt = s['time'].strftime('%H:%M') if s['time'] is not None else '--:--'
+            icon = {'start': '🟢', 'escalation': '🟠', 'peak': '🔴', 'end': '✅', 'active': '⏳'}.get(s['type'], '•')
+            st.markdown(f"- {icon} **{tt}** — {s['label']}")
+    with b:
+        st.subheader("🔎 Root Cause")
+        st.markdown(f"**Primary:** {rca['primary_cause']}")
+        if rca['contributing_factors']:
+            st.markdown("**Contributing factors:**")
+            for f in rca['contributing_factors']:
+                st.markdown(f"- {f}")
 
-    with st.expander("📋 Node Details"):
-        display_cols = ['event_cause', 'corridor', 'zone', 'junction', 'priority',
-                        'event_type', 'impact_level', 'resolution_minutes', 'degree']
-        display_map = {
-            'event_cause': 'Cause', 'corridor': 'Corridor', 'zone': 'Zone',
-            'junction': 'Junction', 'priority': 'Priority', 'event_type': 'Type',
-            'impact_level': 'Impact', 'resolution_minutes': 'Resolution (min)', 'degree': 'Connections'
-        }
-        details_df = nodes_df[[c for c in display_cols if c in nodes_df.columns]].copy()
-        if 'impact_level' in details_df.columns:
-            details_df['impact_level'] = details_df['impact_level'].map(
-                {0: 'Low', 1: 'Medium', 2: 'High', 3: 'Critical'})
-        details_df.columns = [display_map.get(c, c) for c in details_df.columns]
-        st.dataframe(details_df, use_container_width=True, hide_index=True)
+    if av:
+        st.markdown("---")
+        st.subheader("⏳ Avoidable-Delay Analysis")
+        c = st.columns(3)
+        c[0].metric("Actual resolution", f"{av['actual_minutes']:.0f} min")
+        c[1].metric(f"Historical median ({av['cause']})", f"{av['historical_median_minutes']:.0f} min")
+        c[2].metric("Avoidable delay", f"{av['avoidable_minutes']:.0f} min",
+                    delta=f"{av['avoidable_pct']:.0f}% of total", delta_color="inverse")
+        st.caption(f"Compared against {av['peer_count']} comparable historical events.")
+
+
+# --------------------------------------------------------------------------- vulnerability
+def page_vulnerability(vuln):
+    st.header("⚠️ Junction Vulnerability (Fragility)")
+    st.caption("Fragility = 0.40·betweenness + 0.30·cascade-rate + 0.20·degree + 0.10·peak-incidents")
+    if not len(vuln):
+        st.warning("Run train.py to compute vulnerability.")
+        return
+    top_n = st.slider("Show top N", 5, 50, 20)
+    show = vuln.head(top_n)
+    fig = px.bar(show.head(15), x='junction', y='risk_score', color='risk_category',
+                 color_discrete_map={'Low': '#2ECC71', 'Medium': '#F1C40F',
+                                     'High': '#E67E22', 'Critical': '#E74C3C'}, text_auto='.1f')
+    fig.update_layout(height=420, xaxis_tickangle=-45)
+    st.plotly_chart(fig, width='stretch')
+    cols = [c for c in ['junction', 'risk_score', 'risk_category', 'betweenness_norm',
+                        'cascade_rate', 'degree', 'event_count', 'avg_resolution_minutes']
+            if c in vuln.columns]
+    st.dataframe(show[cols], width='stretch', hide_index=True)
+
+
+# --------------------------------------------------------------------------- hotspots
+def page_hotspots(df, hotspots):
+    st.header("📍 Hotspot Analysis")
+    st.caption("DBSCAN spatial clustering of recurring incident zones by cause.")
+    opts = list(hotspots.keys()) if hotspots else []
+    if not opts:
+        st.warning("No hotspots available.")
+        return
+    cause = st.selectbox("Event cause", opts)
+    hdf = hotspots[cause]
+    st.dataframe(hdf, width='stretch', hide_index=True)
+    sub = df[df['event_cause'].astype(str).str.lower() == str(cause).lower()].dropna(
+        subset=['latitude', 'longitude']).head(500)
+    fig = px.scatter_mapbox(sub, lat='latitude', lon='longitude', color='priority',
+                            zoom=10.5, mapbox_style='carto-positron', height=460)
+    for _, h in hdf.iterrows():
+        fig.add_trace(go.Scattermapbox(lat=[h['avg_lat']], lon=[h['avg_lon']], mode='markers',
+                                       marker=dict(size=h['count'] * 2 + 8, color='red', opacity=0.6),
+                                       name=f"{int(h['count'])} events"))
+    st.plotly_chart(fig, width='stretch')
+
+
+# --------------------------------------------------------------------------- similarity
+def page_similarity(df, vec, mat, edata):
+    st.header("🔍 Event Similarity Search")
+    st.caption("TF-IDF vector search over 8,173 historical events.")
+    if edata is None:
+        st.warning("Similarity engine not trained.")
+        return
+    with st.form("sim"):
+        c1, c2 = st.columns(2)
+        with c1:
+            cause = st.selectbox("Cause", sorted(df['event_cause'].dropna().unique()))
+            priority = st.selectbox("Priority", ['High', 'Low'])
+            etype = st.selectbox("Type", ['unplanned', 'planned'])
+        with c2:
+            corridor = st.selectbox("Corridor", sorted(df['corridor'].dropna().unique()))
+            zone = st.selectbox("Zone", sorted(df['zone'].dropna().unique()))
+            junction = st.selectbox("Junction", ['unknown'] + sorted(
+                [j for j in df['junction'].dropna().unique() if str(j).lower() != 'unknown']))
+        go_sim = st.form_submit_button("🔍 Find Similar", type="primary")
+    if go_sim:
+        q = dict(event_cause=cause, corridor=corridor, zone=zone, junction=junction,
+                 event_type=etype, priority=priority, police_station='unknown')
+        res = find_similar_events(q, vec, mat, edata, top_k=5)
+        for i, r in enumerate(res, 1):
+            with st.container():
+                a, b = st.columns([3, 1])
+                a.markdown(f"**{i}. {r['event_cause']}** @ {r.get('junction', '?')} · "
+                           f"{r['corridor']} / {r['zone']} · {r['priority']} priority")
+                b.markdown(f"**{r['similarity_score']:.0%}** match")
+                a.caption(f"Impact: {IMPACT_LABELS.get(int(r['impact_level']), '?')} · "
+                          f"Resolution: {r.get('resolution_minutes', 'N/A')} min")
+                st.divider()
+
+
+# --------------------------------------------------------------------------- resources
+def page_resources():
+    st.header("📋 Resource Recommendation")
+    c1, c2 = st.columns(2)
+    with c1:
+        cause = st.selectbox("Cause", CAUSES)
+        priority = st.selectbox("Priority", ['High', 'Low'])
+    with c2:
+        corridor = st.text_input("Corridor", "ORR East 1")
+        hour = st.slider("Hour", 0, 23, 18)
+        closure = st.checkbox("Road closure")
+    if st.button("📋 Recommend", type="primary"):
+        impact = 2 if priority == 'High' else 0
+        if cause in ('public_event', 'procession', 'vip_movement'):
+            impact = max(impact, 2)
+        if closure:
+            impact = min(impact + 1, 3)
+        res = recommend_resources(impact, cause, closure, corridor, hour)
+        c = st.columns(4)
+        c[0].metric("👮 Officers", res['officers'])
+        c[1].metric("🚧 Barricades", res['barricades'])
+        c[2].metric("📡 Monitoring", res['monitoring'])
+        c[3].metric("🔄 Diversion", res['diversion'])
+        st.info(res['description'])
+        ref = pd.DataFrame([{'Impact': v['impact'], 'Officers': v['officers'],
+                             'Barricades': v['barricades'], 'Monitoring': v['monitoring']}
+                            for v in IMPACT_RESOURCE_MAP.values()])
+        st.dataframe(ref, width='stretch', hide_index=True)
+
+
+# --------------------------------------------------------------------------- digital twin
+def page_digital_twin(df, models):
+    st.header("🔄 Traffic Digital Twin Simulator")
+    st.caption("Compare scenarios side-by-side: impact, resolution, cascade, TTF, resources.")
+    if 'twin_scenarios' not in st.session_state:
+        st.session_state.twin_scenarios = []
+    with st.expander("➕ Add scenario", expanded=len(st.session_state.twin_scenarios) == 0):
+        with st.form("twin"):
+            c1, c2 = st.columns(2)
+            with c1:
+                name = st.text_input("Name", f"Scenario {len(st.session_state.twin_scenarios)+1}")
+                etype = st.selectbox("Type", ['unplanned', 'planned'], key='tt')
+                cause = st.selectbox("Cause", CAUSES, key='tc')
+                priority = st.selectbox("Priority", ['High', 'Low'], key='tp')
+            with c2:
+                corridor = st.selectbox("Corridor", sorted(df['corridor'].dropna().unique()), key='tco')
+                zone = st.selectbox("Zone", sorted(df['zone'].dropna().unique()), key='tz')
+                junction = st.selectbox("Junction", ['Unknown'] + sorted(
+                    [j for j in df['junction'].dropna().unique() if str(j).lower() != 'unknown']), key='tj')
+                hour = st.slider("Hour", 0, 23, 18, key='th')
+                closure = st.checkbox("Road closure", key='tcl')
+            if st.form_submit_button("➕ Add", type="primary"):
+                st.session_state.twin_scenarios.append(dict(
+                    name=name, event_type=etype, event_cause=cause, priority=priority,
+                    requires_road_closure=closure, corridor=corridor, zone=zone,
+                    junction=junction, hour=hour))
+                st.rerun()
+    if st.session_state.twin_scenarios:
+        st.write(f"**{len(st.session_state.twin_scenarios)} scenario(s) queued**")
+        cols = st.columns([1, 1])
+        if cols[0].button("🔄 Run Comparison", type="primary"):
+            res = digital_twin.compare_scenarios(
+                st.session_state.twin_scenarios, models['impact'], models['resolution'], models['cascade'],
+                models['calibrator'], models['encoders'], models['cmap'])
+            st.session_state.twin_res = digital_twin.scenarios_to_dataframe(res)
+        if cols[1].button("🗑️ Clear"):
+            st.session_state.twin_scenarios = []
+            st.session_state.pop('twin_res', None)
+            st.rerun()
+    if st.session_state.get('twin_res') is not None:
+        rdf = st.session_state.twin_res
+        st.dataframe(rdf, width='stretch', hide_index=True)
+        rdf2 = rdf.copy()
+        rdf2['Cascade Prob.'] = pd.to_numeric(rdf2['Cascade Prob.'].str.rstrip('%'), errors='coerce')
+        fig = px.bar(rdf2, x='Scenario', y='Cascade Prob.', color='Impact Level',
+                     color_discrete_map={v: IMPACT_COLORS[k] for k, v in IMPACT_LABELS.items()},
+                     text='Risk')
+        fig.update_layout(height=380, yaxis_title="Cascade probability (%)")
+        st.plotly_chart(fig, width='stretch')
+
+
+# --------------------------------------------------------------------------- knowledge graph
+def page_knowledge_graph(df_feat):
+    st.header("🕸️ Knowledge Graph — Event Relationships")
+    c1, c2, c3 = st.columns(3)
+    max_nodes = c1.slider("Max events", 20, 100, 50)
+    min_sim = c2.slider("Min similarity", 0.05, 0.8, 0.25, 0.05)
+    cause = c3.selectbox("Cause", ['All'] + sorted(df_feat['event_cause'].dropna().unique().tolist()))
+    nodes, edges = build_event_graph(df_feat, max_nodes=max_nodes, min_similarity=min_sim,
+                                     filter_cause=cause)
+    if nodes.empty:
+        st.warning("Not enough connected events. Lower the similarity threshold.")
+        return
+    stats = get_graph_stats(nodes, edges)
+    cc = st.columns(4)
+    cc[0].metric("Nodes", stats['nodes'])
+    cc[1].metric("Edges", stats['edges'])
+    cc[2].metric("Clusters", stats['clusters'])
+    cc[3].metric("Avg degree", stats['avg_degree'])
+    ex, ey = [], []
+    for _, e in edges.iterrows():
+        s = nodes[nodes['id'] == e['source']].iloc[0]
+        t = nodes[nodes['id'] == e['target']].iloc[0]
+        ex += [s['x'], t['x'], None]
+        ey += [s['y'], t['y'], None]
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=ex, y=ey, mode='lines', line=dict(width=0.5, color='#bbb'),
+                             hoverinfo='none'))
+    fig.add_trace(go.Scatter(x=nodes['x'], y=nodes['y'], mode='markers',
+                             marker=dict(size=nodes['degree'].clip(6, 24),
+                                         color=[IMPACT_COLORS.get(int(i), '#888') for i in nodes['impact_level']]),
+                             text=nodes['event_cause'], hovertemplate="%{text}<extra></extra>"))
+    fig.update_layout(height=560, showlegend=False, xaxis_visible=False, yaxis_visible=False)
+    st.plotly_chart(fig, width='stretch')
+
+
+# --------------------------------------------------------------------------- post-event learning
+def page_post_event(df, df_feat, models):
+    st.header("📈 Post-Event Learning System")
+    st.caption("The loop the brief asks for: store predictions, match to outcomes, measure & improve.")
+    if st.button("🔁 (Re)build learning evidence from history"):
+        with st.spinner("Replaying historical events through the live models..."):
+            X, t, _, _ = engineer_features(df, is_train=True, centrality_map=models['cmap'])
+            n = post_event.seed_from_history(df, X, t, models['impact'], models['resolution'],
+                                             models['cascade'], models['calibrator'], n=500)
+        st.success(f"Logged {n} prediction-vs-actual records.")
+
+    s = post_event.learning_summary()
+    if not s:
+        st.info("No records yet — click the button above to seed from history, or make predictions.")
+        return
+    c = st.columns(4)
+    c[0].metric("Predictions logged", s['total_predictions'])
+    c[1].metric("With ground truth", s['with_ground_truth'])
+    c[2].metric("Impact accuracy", f"{s.get('impact_accuracy', 0):.1%}",
+                delta=f"±1: {s.get('impact_within_1', 0):.0%}")
+    c[3].metric("Resolution MedAE", f"{s.get('resolution_medae', 0):.0f} min")
+
+    a, b = st.columns(2)
+    with a:
+        st.subheader("Cascade calibration (reliability curve)")
+        cal = s.get('calibration')
+        if cal is not None and len(cal):
+            fig = go.Figure()
+            fig.add_trace(go.Scatter(x=[0, 1], y=[0, 1], mode='lines',
+                                     line=dict(dash='dash', color='gray'), name='perfect'))
+            fig.add_trace(go.Scatter(x=cal['predicted'], y=cal['observed'], mode='lines+markers',
+                                     name='model', line=dict(color='#3498DB')))
+            fig.update_layout(height=320, xaxis_title="predicted probability",
+                              yaxis_title="observed rate")
+            st.plotly_chart(fig, width='stretch')
+            st.caption(f"Brier score: {s.get('cascade_brier', 0):.4f} (lower is better)")
+    with b:
+        st.subheader("Accuracy over time (drift)")
+        ts = post_event.accuracy_over_time(freq='W')
+        if len(ts):
+            fig = px.line(ts, x='ts', y='accuracy', markers=True)
+            fig.update_layout(height=320, yaxis_range=[0, 1])
+            st.plotly_chart(fig, width='stretch')
+
+
+# --------------------------------------------------------------------------- model card
+def page_model_card(metrics):
+    st.header("🧠 Model Card — Honest Performance & Methodology")
+    if not metrics:
+        st.warning("Run train.py to generate metrics.")
+        return
+    st.markdown("All metrics below are on a **chronological held-out test set** "
+                "(train Nov→Mar, test Mar→Apr) with encoders fit on train only — no leakage.")
+    imp, casc = metrics.get('impact', {}), metrics.get('cascade', {})
+    band, res = metrics.get('duration_prolonged', {}), metrics.get('resolution', {})
+
+    c = st.columns(3)
+    c[0].metric("Cascade ROC-AUC", f"{casc.get('roc_auc', 0):.3f}",
+                help="vs random 0.50; strong discrimination")
+    c[0].metric("Cascade PR-AUC", f"{casc.get('pr_auc', 0):.3f}",
+                delta=f"base rate {casc.get('positive_rate', 0):.2f}")
+    c[1].metric("Cascade Brier (calibrated)", f"{casc.get('brier_calibrated', 0):.4f}",
+                delta=f"from {casc.get('brier_raw', 0):.3f} raw", delta_color="inverse")
+    c[1].metric("Impact accuracy", f"{imp.get('accuracy', 0):.1%}",
+                delta=f"vs {imp.get('majority_baseline', 0):.1%} baseline")
+    c[2].metric("Impact macro-F1", f"{imp.get('macro_f1', 0):.3f}")
+    c[2].metric("Resolution MedAE", f"{res.get('medae', 0):.0f} min",
+                help="median absolute error on reliable events")
+
+    st.markdown("---")
+    st.subheader("Model portfolio")
+    st.markdown("""
+| Model | Task | Technique | Headline |
+|---|---|---|---|
+| **Cascade Classifier** | Will this escalate? | XGBoost + isotonic calibration | ROC-AUC %.3f, Brier %.3f |
+| **Impact Classifier** | Severity (Low→Critical) | XGBoost, composite-severity label | acc %.1f%%, macro-F1 %.2f |
+| **AFT Resolution** | How long? | XGBoost **survival:aft** (handles censoring) | MedAE %.0f min |
+| **Prolonged (>60min)** | Quick vs long | XGBoost binary | in-dist AUC ~%.2f *(weak target)* |
+""" % (casc.get('roc_auc', 0), casc.get('brier_calibrated', 0),
+       imp.get('accuracy', 0) * 100, imp.get('macro_f1', 0), res.get('medae', 0),
+       band.get('cv_auc_in_distribution', 0.59)))
+
+    st.subheader("Methodology & honesty notes")
+    st.markdown("""
+- **Leakage removed:** chronological split *before* fitting; label-encoders, smoothed target
+  encodings and the scaler are fit on train only. `status` is excluded (it leaks the outcome).
+- **Censoring handled:** only ~74 events have a true `resolved_datetime`; the rest are
+  administrative closes. The AFT model treats those as **interval-censored** and still-active
+  events as **right-censored** instead of trusting or discarding them.
+- **Imbalance:** cascade is ~9% positive — we report **PR-AUC** and **balanced accuracy**, not
+  just accuracy, and calibrate probabilities (Brier 0.24→0.04).
+- **Known limitation:** fine-grained *resolution duration* is intrinsically weak in this data
+  (in-distribution AUC ~0.59, near-random out-of-time). We surface it as a historical-anchored
+  estimate + duration band, and lean on cascade risk for decisions.
+""")
+    if casc.get('confusion_matrix'):
+        st.subheader("Cascade confusion matrix (held-out)")
+        cm = np.array(casc['confusion_matrix'])
+        fig = px.imshow(cm, text_auto=True, color_continuous_scale='Blues',
+                        x=['No cascade', 'Cascade'], y=['No cascade', 'Cascade'],
+                        labels=dict(x='Predicted', y='Actual'))
+        fig.update_layout(height=320, coloraxis_showscale=False)
+        st.plotly_chart(fig, width='stretch')
 
 
 if __name__ == '__main__':

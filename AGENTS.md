@@ -3,40 +3,55 @@
 ## Project structure
 
 ```
-app.py          Streamlit dashboard entrypoint (7 modules)
-train.py        End-to-end training pipeline (8 steps)
-src/            ML modules: feature_engineering, models, hotspot_detection,
-                vulnerability, similarity, resources, cascade_autopsy
-data/           dataset.csv (8173 events), junction_vulnerability.csv
-models/         6 .pkl artifacts + metrics.json (loaded at app startup)
+app.py          Streamlit dashboard (14 pages); loads saved artifacts, never refits for serving
+train.py        Training pipeline: split → fit-on-train (honest eval) → refit-all → save
+src/            ML + intelligence modules (see README "Project structure")
+data/           dataset.csv (8173 events), junction_vulnerability.csv, junction_centrality.csv
+models/         impact/cascade/prolonged classifiers, resolution_regressor (AFT .ubj),
+                cascade_calibrator, encoders.pkl, network.pkl, metrics.json
 ```
 
-No tests, no CI, no lint/format/typecheck tooling.
+No tests beyond the Streamlit AppTest smoke-check (below). No CI/lint tooling.
 
 ## Commands
 
 ```bash
-poetry install                              # install deps (Python >=3.10,<3.12)
-poetry run python train.py                  # train all models
-poetry run streamlit run app.py             # launch dashboard
-pip install -r requirements.txt             # pip alternative (venv recommended)
+pip install -r requirements.txt
+python train.py                     # retrain all models + write metrics.json
+streamlit run app.py                # launch dashboard
+# headless validation of all 14 pages:
+python -c "from streamlit.testing.v1 import AppTest; \
+  a=AppTest.from_file('app.py',default_timeout=180).run(); print('ok' if not a.exception else a.exception)"
 ```
 
-## Architecture notes
+## Architecture notes (post-v2 rewrite)
 
-- **Time-aware split**: train.py uses chronological 80/20 split (not random).
-- **Resolution regressor** predicts in log space (`np.log1p` / `np.expm1`).
-- **Impact target** is rule-based (computed in `feature_engineering.py:create_impact_target`, not in data).
-- **Cascade target**: resolution > 75th percentile AND impact >= 2.
-- **29 engineered features**: cyclical time encoding, label encoding, target encoding (groupby means/counts).
-- **Feature engineering must be trained first**: `engineer_features(df, is_train=True)` returns encoders used for inference.
-- **scikit-learn pinned `<1.5`** in pyproject.toml (label encoder compatibility).
-- **Joblib for models**, pickle for similarity/hotspots.
-- `shap` and `matplotlib` in deps but not used in code.
-- Resources module has in-memory `RESOURCE_HISTORY` (session-only, does not persist).
+- **Leakage-safe by construction.** `train.py` does a chronological split BEFORE fitting.
+  `engineer_features(df, is_train=True)` fits encoders/scaler; `is_train=False` transforms
+  with passed-in `encoders`. App loads `models/encoders.pkl` (fit on full data) for serving —
+  it does NOT refit. `status` is intentionally excluded from features (outcome leak).
+- **Unified feature API:** `engineer_features(...) -> (X, targets_dict, encoders, feature_cols)`
+  for BOTH train and inference (consistent arity). `targets_dict` keys: resolution_minutes,
+  reliable, y_lower, y_upper, impact_level, duration_band, prolonged, cascade, sample_weight.
+- **Targets:** impact = composite severity index (cause prior + priority + closure + peak +
+  corridor, nudged by duration where reliable). resolution = AFT survival with interval-
+  censored admin-closes (`y_lower`/`y_upper`). cascade = high-impact AND long-run.
+- **Models:** AFT resolution is an `xgboost.Booster` (saved as `.ubj` + a `.pkl` pointer);
+  classifiers are `XGBClassifier`. `models.load_model` handles both. Cascade probabilities go
+  through `predict_cascade_proba(model, calibrator, X)` (isotonic).
+- **Resolution display:** raw AFT is noisy for rare causes → `display_resolution()` shrinks
+  toward the cause's historical prior (used everywhere user-facing, NOT in metrics).
+- **Network:** `network.py` builds a NetworkX junction graph (kNN + shared-corridor edges);
+  `centrality_feature_map` feeds 3 features into the models; also powers propagation,
+  percolation early-warning, and diversion. `cmap` is stored inside `encoders.pkl`.
+- **SHAP:** `models.explain_prediction` uses XGBoost native `pred_contribs` (no `shap` import
+  needed at inference); `shap` lib is only an optional extra.
 
-## Data conventions
+## Conventions
 
-- String columns normalized in `feature_engineering.py`: lowercased, stripped, fillna('unknown').
-- Junctions additionally have spaces removed (`str.replace(' ', '')`).
-- `engineer_features(inference)` maps unseen categories to -1 via LabelEncoder.
+- String cats normalised in `feature_engineering._normalize_cats` (lower/strip/fillna 'unknown';
+  junctions also strip spaces). Unseen categories → encoded as -1, target-enc → global mean.
+- Metrics in `models/metrics.json` are the chronological held-out numbers (honest). The Model
+  Card page renders them. Don't replace them with in-sample numbers.
+- `data/predictions_log.csv` is a runtime store (gitignored); the Post-Event page seeds it
+  from history on demand.
