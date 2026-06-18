@@ -67,5 +67,6 @@ def load_similarity_engine():
     path = os.path.join(MODELS_DIR, 'similarity.pkl')
     if os.path.exists(path):
         with open(path, 'rb') as f:
-            return pickle.load(f)
+            d = pickle.load(f)
+        return d['vectorizer'], d['tfidf_matrix'], d['event_data']
     return None, None, None

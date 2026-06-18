@@ -36,6 +36,9 @@ Thumbs.db
 # Streamlit
 .streamlit/
 
+# Post-event learning runtime store (regenerated on demand)
+data/predictions_log.csv
+
 # Testing
 .coverage
 htmlcov/

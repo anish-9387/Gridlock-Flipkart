@@ -1,310 +1,179 @@
-# CascadeIQ — Event Impact Forecasting & Response Intelligence System
+<p align="center">
+  <img src="ui/assets/logo.png" width="280" alt="Rippl logo"/>
+</p>
 
-**Gridlock-Flipkart 2.0 Hackathon — Theme 2: Event-Driven Congestion**
+<p align="center">
+  <strong>Predicting the impact of what happens next.</strong><br/>
+  Gridlock × Flipkart 2.0 Hackathon &nbsp;·&nbsp; Theme 2: Event-Driven Congestion
+</p>
+
+---
 
 > **Cities don't fail because of events. They fail because of cascades.**
 >
-> CascadeIQ predicts how disruptions spread, how much time authorities have before escalation, and the exact decision window where intervention could have prevented city-wide failure.
+> Rippl predicts how disruptions spread, how much time authorities have before escalation,
+> and the exact decision window where intervention could have prevented city-wide failure —
+> learned from **8,173 historical Bengaluru traffic events**.
 
 ---
 
-## Problem Statement
+## What this looks like in practice
 
-Traffic authorities manage both **planned events** (sports matches, festivals, VIP movement, processions, construction) and **unplanned events** (vehicle breakdowns, accidents, water logging, tree falls, protests). These events frequently evolve into severe congestion because of delayed intervention, poor situational awareness, resource bottlenecks, and escalating secondary effects.
+A water logging event is reported in Bengaluru. Rippl flags it as Critical impact with a 76% cascade probability and a 07:18 Point of No Return — meaning authorities have a 10-minute window to act. The Cascade Autopsy module then shows that lifting the road closure would have cut cascade risk from 76% to 4% and extended Time-To-Failure from 24 minutes to 62 minutes. That's the difference between a managed disruption and a gridlock.
 
-Current systems are reactive — they identify traffic problems only after they have already developed. Authorities cannot reliably answer:
-
-- Which event is likely to create the highest traffic impact?
-- Which junctions are most vulnerable during an event?
-- How long will the disruption last?
-- How many officers and barricades should be deployed?
-- Which corridors need proactive monitoring?
-- What can be learned from previous similar events?
-
-Most decisions are based on experience rather than historical evidence.
+**→ [Screenshot: Cascade Autopsy — water logging event, Critical → Medium, 76% → 4% cascade risk]**
 
 ---
 
-## Core Insight
+## Why this project is different
 
-Most systems think: `Event → Congestion`
+Most teams build an "event → congestion" classifier. Rippl models the real chain —
+**event → local disruption → network stress → junction overload → spillback → escalation → gridlock** —
+and is engineered for honesty and correctness, not just a headline accuracy number.
 
-Reality is: `Event → Local Disruption → Network Stress → Junction Overload → Spillback → Escalation → City-Wide Gridlock`
-
-The congestion itself is not the problem — **the escalation is**. CascadeIQ is designed to predict, analyze, and prevent escalation before it happens.
-
----
-
-## Solution Overview
-
-CascadeIQ is an AI-powered platform that learns from 8,173 historical traffic events and helps authorities forecast the operational impact of future events. Instead of simply recording incidents, the system predicts impact level, resolution duration, resource requirements, vulnerable junctions, and optimal response actions.
-
-### System Architecture
-
-```
-Historical Events
-       ↓
-  Impact Prediction Model  ─── XGBoost Classifier (75.7% accuracy)
-       ↓
-  Resolution Time Model    ─── XGBoost Regressor (109.5 min MAE)
-       ↓
-  Cascade Risk Model       ─── XGBoost Classifier (93.1% accuracy, 0.958 AUC-ROC)
-       ↓
-  Junction Vulnerability   ─── Multi-factor Risk Index (294 junctions)
-       ↓
-  Hotspot Detection        ─── DBSCAN Spatial Clustering
-       ↓
-  Event Similarity Engine  ─── TF-IDF Vector Search
-       ↓
-  Resource Recommendation  ─── Context-Aware Allocation Engine
-       ↓
-   Cascade Autopsy          ─── Counterfactual Simulation
-        ↓
-    Digital Twin Simulator   ─── Multi-Scenario Comparison
-        ↓
-   Knowledge Graph          ─── Multi-Dimensional Event Relationship Analysis
-        ↓
-   Streamlit Dashboard      ─── Interactive Decision Support
-```
+- A **survival model** that handles censored resolution times instead of trusting corrupt administrative timestamps.
+- A **calibrated** cascade-risk model whose probabilities are trustworthy (Brier 0.24 → 0.038).
+- A **road-network graph** with betweenness-centrality fragility and a percolation cascade tracker.
+- A **leakage-free** evaluation with a Model Card that states the limits up front.
 
 ---
 
-## Modules
-
-### 1. Event Impact Prediction
-Forecasts operational impact of an event before it escalates.
-
-- **Inputs:** Event type, cause, priority, corridor, zone, road closure, time of day
-- **Outputs:** Low / Medium / High / Critical impact with confidence score
-- **Model:** XGBoost Classifier with 29 engineered features (time features, target encodings, historical statistics)
-- **Accuracy:** 75.7%
-
-### 2. Resolution Time Prediction
-Estimates how long traffic disruption will last.
-
-- **Inputs:** Same feature set as impact prediction
-- **Outputs:** Expected resolution time in minutes
-- **Model:** XGBoost Regressor with log-transformed target
-- **MAE:** 109.5 minutes
-
-### 3. Cascade Risk Assessment
-Predicts whether an event will escalate into a critical gridlock situation.
-
-- **Outputs:** Cascade probability (%), risk level
-- **Model:** XGBoost Binary Classifier
-- **Accuracy:** 93.1% | **AUC-ROC:** 0.958
-
-### 4. Junction Vulnerability Analysis
-Identifies junctions most at risk during events using a multi-factor risk index.
-
-- **Factors:** Event frequency, average resolution time, high-priority ratio, road closure frequency, impact severity
-- **Outputs:** Risk score (/10), risk category (Low/Medium/High/Critical)
-- **Coverage:** 294 junctions across Bengaluru
-
-### 5. Hotspot Detection
-Uses DBSCAN spatial clustering to identify recurring event hotspots by cause type.
-
-- **Clusters detected:** Vehicle breakdown (263), water logging (25), pot holes (27), construction (11), accident (7), and more
-- **Outputs:** Interactive map with hotspot clusters
-
-### 6. Event Similarity Search
-Finds top-5 historical events most similar to any given event using TF-IDF vector search.
-
-- **Similarity dimensions:** Event cause, corridor, zone, junction, type, priority
-- **Outputs:** Similarity score, historical impact, resolution time, resources used
-
-### 7. Resource Recommendation Engine
-Recommends optimal resource deployment based on event context.
-
-| Impact Level | Officers | Barricades | Monitoring | Diversion |
-|-------------|----------|------------|------------|-----------|
-| Low | 2 | 2 | Observation Only | Not Required |
-| Medium | 5 | 6 | Normal | Standby |
-| High | 10 | 14 | Immediate | Required |
-| Critical | 15 | 20 | Immediate | Required |
-
-Modifiers applied for: event cause, peak hours (20% increase), road closure (50% more barricades), major corridors (10% increase).
-
-### 8. Cascade Autopsy (Counterfactual Simulation)
-The flagship feature — identifies the exact decision window where intervention could have prevented escalation.
-
-- **Method:** Binary search over intervention timing to find the Point of No Return
-- **Outputs:** Point of No Return timestamp, Decision Window (minutes), Potential Delay Saved, Reality vs Counterfactual timeline
-
-### 9. Traffic Digital Twin Simulator
-Compares multiple event scenarios side-by-side to assess impact, resource needs, and cascade risk before deployment.
-
-- **Inputs:** Multiple scenario configurations (event type, cause, priority, location, time, road closure)
-- **Outputs:** Side-by-side comparison table and visualizations of impact level, resolution time, cascade probability, and resource requirements
-- **Engine:** Wraps Impact, Resolution, and Cascade models for parallel scenario simulation
-
-### 10. Knowledge Graph — Event Relationship Analysis
-Discovers multi-dimensional relationships between events based on shared cause, location, and type attributes.
-
-- **Connections:** Cosine similarity over one-hot encoded attributes (event cause, corridor, zone, junction, type, priority)
-- **Layout:** PCA projection to 2D for interactive graph visualization
-- **Outputs:** Interactive graph with node details, filters by cause/zone, cluster statistics
-- **Filtering:** Adjustable similarity threshold and node count
-
----
-
-## Dataset
-
-The dataset contains **8,173 events** with 46 columns capturing:
-
-| Category | Attributes |
-|----------|-----------|
-| **Event Characteristics** | event_type, event_cause, priority, requires_road_closure |
-| **Location Intelligence** | latitude, longitude, corridor, zone, junction, police_station |
-| **Time Intelligence** | start_datetime, end_datetime, resolved_datetime, closed_datetime |
-| **Operational Outcomes** | status, closure information, resolution duration |
-
-### Key Statistics
-
-- **7706** unplanned events | **467** planned events
-- **5030** high priority | **3141** low priority
-- **22** corridors | **10** zones | **294** junctions
-- **7095** closed | **1007** active | **71** resolved
-
----
-
-## Technical Stack
-
-| Layer | Technology |
-|-------|-----------|
-| **Data Processing** | Pandas, NumPy |
-| **Machine Learning** | XGBoost, Scikit-Learn |
-| **Feature Engineering** | Cyclical time encoding, Target encoding, Historical aggregates |
-| **Spatial Analysis** | DBSCAN Clustering |
-| **Similarity Search** | TF-IDF Vectorization, Cosine Similarity |
-| **Frontend** | Streamlit, Plotly |
-| **Explainability** | SHAP (integrated) |
-| **Package Management** | Poetry |
-
----
-
-## Project Structure
-
-```
-cascadeiq/
-├── app.py                          # Streamlit dashboard (9 interactive modules)
-├── train.py                        # End-to-end training pipeline
-├── pyproject.toml                  # Poetry project configuration
-├── requirements.txt                # pip dependencies
-├── README.md                       # This file
-├── .gitignore
-├── data/
-│   ├── dataset.csv                 # 8,173 historical events
-│   └── junction_vulnerability.csv  # Precomputed junction risk scores
-├── models/                         # Trained model artifacts
-│   ├── impact_classifier.pkl
-│   ├── resolution_regressor.pkl
-│   ├── cascade_classifier.pkl
-│   ├── similarity.pkl
-│   ├── hotspots.pkl
-│   └── metrics.json
-└── src/
-    ├── feature_engineering.py      # 29 engineered features + target creation
-    ├── models.py                   # XGBoost training & evaluation
-    ├── hotspot_detection.py        # DBSCAN spatial clustering
-    ├── vulnerability.py            # Junction Risk Index calculation
-    ├── similarity.py               # TF-IDF event similarity search
-    ├── resources.py                # Context-aware resource recommendation
-    ├── cascade_autopsy.py          # Counterfactual simulation engine
-    ├── digital_twin.py             # Multi-scenario comparison simulator
-    └── knowledge_graph.py          # Multi-dimensional event relationship analysis
-```
-
----
-
-## Setup & Installation
-
-### Prerequisites
-
-- Python >= 3.10, < 3.12
-- Poetry (recommended) or pip
-
-### Using Poetry (Recommended)
+## Quickstart
 
 ```bash
-# Install dependencies
-poetry install
-
-# Activate virtual environment
-poetry shell
-
-# Train models
-poetry run python train.py
-
-# Launch the dashboard
-poetry run streamlit run app.py
+pip install -r requirements.txt        # Python >= 3.10
+python train.py                        # build network, train models, write metrics
+streamlit run app.py                   # launch the dashboard
 ```
 
-### Using pip
+Poetry also works:
 
 ```bash
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate  # Linux/Mac
-venv\Scripts\activate     # Windows
+poetry install && poetry run python train.py && poetry run streamlit run app.py
+```
 
-# Install dependencies
-pip install -r requirements.txt
+> **Reproducibility note:** all encoders and scalers are fit on the training slice only. Running `train.py` on a fresh clone produces the same `models/metrics.json` within floating-point tolerance.
 
-# Train models
-poetry run python train.py
+---
 
-# Launch dashboard
-poetry run streamlit run app.py
+## Model performance
+
+All metrics use a time-aware split (train Nov 2023 → Mar 2024, test Mar → Apr 2024).
+Encoders are fit on training data only. The `status` column is excluded — it leaks the outcome.
+
+| Model | Task | Technique | Result |
+|---|---|---|---|
+| Cascade Classifier | Will it escalate? | XGBoost + isotonic calibration | ROC-AUC 0.91, PR-AUC 0.64 (vs 0.08 base rate), Brier 0.038 |
+| Impact Classifier | Severity (Low → Critical) | XGBoost, composite-severity label | 71.3% acc (vs 55.8% baseline), macro-F1 0.62 |
+| AFT Resolution | How long? | XGBoost `survival:aft` (censoring-aware) | MedAE 60 min on reliable events |
+| Prolonged (>60 min) | Quick vs long | XGBoost binary | in-dist AUC ~0.61 *(intrinsically weak — see limitations)* |
+
+### Why the numbers are trustworthy (and what we fixed)
+
+The raw dataset has two traps that inflate naive scores:
+
+**1. Censored resolution times.** Only ~74 events have a real `resolved_datetime`. The rest fall back to `closed_datetime`, an administrative close (90th percentile ≈ 11.6 days). Rather than trust or discard these, the AFT model treats admin-closes as interval-censored and still-active events as right-censored — the principled survival-analysis approach.
+
+**2. Leakage.** The split happens before any fitting. Label encoders, smoothed target encodings, and the scaler see training data only.
+
+The dashboard's Model Card page renders all of this live, including the cascade confusion matrix and the calibration curve.
+
+---
+
+## Signature features
+
+**Cascade Autopsy** — the standout module. Feed it any historical event and it quantifies how much escalation was preventable — by lifting a road closure, shifting the event off-peak, or both. It marks the Point of No Return: the exact timestep after which no intervention could have stopped gridlock. No other team in this space is doing counterfactual analysis at this level.
+
+**Time-To-Failure (TTF)** — minutes until escalation, derived from cascade probability, severity, and junction fragility. Gives operators a concrete number to act on rather than an abstract risk score.
+
+**Network Propagation Engine** — a data-derived road graph (NetworkX, 294 junctions), betweenness-centrality fragility scoring, a threshold/SIR cascade spread simulation, and a percolation connected-components tracker. The peak-cluster timestep from the percolation tracker is the published precursor to network collapse.
+
+**Post-Event Learning loop** — predictions are stored, matched to outcomes, and scored over time. Closes the gap the brief identified: no existing post-event learning system.
+
+**Explainability** — exact tree-SHAP per prediction via XGBoost's native `pred_contribs`. No extra dependency. Surfaced as a driver waterfall so operators can see exactly why a risk score is high.
+
+---
+
+## Dashboard modules
+
+| # | Page | What it does |
+|---|------|--------------|
+| 1 | Dashboard Overview | KPIs, distributions, time series, fragility leaderboard |
+| 2 | Event Impact Prediction | Impact + calibrated cascade % + TTF + tree-SHAP waterfall |
+| 3 | Early Warning System | Pre-event 0–100 risk index, deployment lead time, city-wide percolation risk |
+| 4 | Network Propagation | Cascade spread animation, betweenness fragility, collapse curve, diversion routing |
+| 5 | Cascade Autopsy | Counterfactual levers → preventable share + Point of No Return |
+| 6 | Traffic Black Box | Event reconstruction, root-cause analysis, avoidable-delay accounting |
+| 7 | Junction Vulnerability | Fragility index (centrality-based) |
+| 8 | Hotspot Analysis | DBSCAN spatial clusters by cause |
+| 9 | Event Similarity Search | TF-IDF top-5 historical matches |
+| 10 | Resource Recommendation | Officers / barricades / monitoring / diversion |
+| 11 | Digital Twin Simulator | Side-by-side what-if scenario comparison |
+| 12 | Knowledge Graph | Multi-dimensional event relationship graph |
+| 13 | Post-Event Learning | Prediction-vs-actual log, calibration curve, accuracy drift |
+| 14 | Model Card | Held-out metrics, methodology, and stated limitations |
+
+---
+
+## Architecture
+
+```
+8,173 historical events
+        │
+        ├─► Road Network Graph ── NetworkX · 294 junctions · betweenness fragility · percolation
+        │
+        ├─► Feature Pipeline ──── 28 leak-safe features (cyclical time, smoothed target encoding, centrality)
+        │
+        ├─► Impact Classifier ────────── XGBoost (composite severity)
+        ├─► AFT Resolution Model ──────── XGBoost survival:aft
+        ├─► Cascade Classifier ────────── XGBoost + isotonic calibration
+        ├─► Time-To-Failure Estimator ─── escalation pressure → decision window
+        │
+        └─► Streamlit Decision-Support Dashboard (14 modules)
 ```
 
 ---
 
-## Usage
+## Project structure
 
-### Dashboard Navigation
-
-1. **Dashboard Overview** — Key metrics, event distribution charts, time series, top vulnerable junctions
-2. **Event Impact Prediction** — Input event parameters and get instant prediction with confidence, resolution time, cascade risk, and resource recommendations
-3. **Hotspot Analysis** — View DBSCAN spatial clusters by event cause on interactive maps
-4. **Junction Vulnerability** — Browse and filter all 294 junctions by risk score
-5. **Event Similarity Search** — Find top-5 historical events matching any event profile
-6. **Cascade Autopsy** — Select any historical event and run counterfactual analysis to discover the Point of No Return
-7. **Resource Recommendation** — Get optimized officer, barricade, and diversion recommendations
-8. **Digital Twin Simulator** — Create and compare multiple event scenarios side-by-side
-9. **Knowledge Graph** — Explore multi-dimensional event relationships through an interactive graph
-
----
-
-## Model Performance
-
-| Model | Metric | Score |
-|-------|--------|-------|
-| **Impact Classifier** | Accuracy | **75.7%** |
-| **Cascade Classifier** | Accuracy | **93.1%** |
-| **Cascade Classifier** | AUC-ROC | **0.958** |
-| **Resolution Regressor** | MAE | **109.5 min** |
-
-All models validated using **time-aware train/test split** (80/20 chronological) to avoid temporal leakage.
+```
+app.py                     dashboard (14 pages)
+train.py                   leakage-safe training pipeline
+src/
+  feature_engineering.py   leak-safe features, composite impact, survival bounds
+  models.py                XGBoost classifiers, AFT survival, isotonic calibration, SHAP
+  network.py               road graph, betweenness fragility, cascade spread, percolation
+  ttf.py                   Time-To-Failure estimator
+  cascade_autopsy.py       counterfactual analysis + Point of No Return
+  black_box.py             reconstruction, root cause, avoidable delay
+  early_warning.py         pre-event risk index + city-wide percolation risk
+  post_event.py            prediction log, history replay, drift tracking
+  explain.py               SHAP waterfall + feature importance
+  vulnerability.py         junction fragility index
+  similarity.py            TF-IDF event similarity
+  hotspot_detection.py     DBSCAN spatial clustering
+  resources.py             context-aware resource recommendation
+  digital_twin.py          multi-scenario simulator
+  knowledge_graph.py       event relationship graph
+data/                      dataset.csv, junction_vulnerability.csv, junction_centrality.csv
+models/                    trained artifacts + metrics.json
+```
 
 ---
 
-## Why CascadeIQ Is Different
+## Known limitations
 
-| Dimension | Traditional Systems | CascadeIQ |
-|-----------|-------------------|-----------|
-| Focus | Congestion detection | **Escalation prediction** |
-| Timing | Reactive (after) | **Preventive (before)** |
-| Decision Metric | Risk level | **Time-To-Failure (minutes)** |
-| Resource Planning | Manual | **Data-driven recommendations** |
-| Post-Event Analysis | None | **Cascade Autopsy with Point of No Return** |
-| Institutional Memory | Lost | **Similarity search across 8K events** |
-| Explainability | None | **Counterfactual simulation** |
+**Resolution duration is intrinsically hard to predict** in this data. In-distribution AUC for "will it exceed 60 min?" is ~0.61 and near-random out-of-time, because the resolution target is largely censored. We surface resolution as a historical-anchored estimate with a duration band and lean on the cascade-risk model for decisions.
+
+**Impact is a composite-severity index**, not a ground-truth label — ~70% of rows have no labelled severity. The classifier learns and generalises from the composite with calibrated confidence.
+
+**The road graph is reconstructed** from event geolocations and corridor membership (kNN + shared-corridor edges), not a full OSM import. This is a deliberate trade-off for a zero-download, reproducible demo.
 
 ---
 
-## Future Enhancements
+## Roadmap
 
-- Reinforcement Learning-based diversion optimization
-- LLM-powered Traffic Commander for conversational queries
-- Real-time integration with traffic sensors and CCTV feeds
+- XGBoost AFT → `lifelines` Weibull/Log-Logistic with Kaplan-Meier curves per cause
+- Full OSMnx road import for true edge betweenness
+- LLM "Traffic Commander" copilot grounded on model outputs (RAG)
+- Reinforcement-learning diversion optimiser
