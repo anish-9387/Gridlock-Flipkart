@@ -55,3 +55,53 @@ python -c "from streamlit.testing.v1 import AppTest; \
   Card page renders them. Don't replace them with in-sample numbers.
 - `data/predictions_log.csv` is a runtime store (gitignored); the Post-Event page seeds it
   from history on demand.
+
+## Domino Labs UI Rules
+
+### 1. Streamlit First
+This is a Streamlit application. Do NOT treat it like Next.js, React, Tailwind, Framer, or a custom frontend. Work WITH Streamlit. Do NOT fight Streamlit.
+
+### 2. One CSS Injection Method Only
+Use exactly ONE method across the entire project: `st.markdown(f"<style>{css}</style>", unsafe_allow_html=True)`. Do NOT use: SVG style injection, Base64 stylesheet injection, iframe tricks, HTML wrappers, embedded CSS in images, or alternate CSS delivery systems. If CSS injection breaks: STOP. Fix injection first. Do not continue styling.
+
+### 3. Never Print CSS
+Before every commit verify: CSS is not visible on screen, CSS is not rendered as text, no style content appears in page body. If CSS text is visible: STOP. Fix that issue before making any design changes.
+
+### 4. No Emotion Cache Classes
+Never target `.st-emotion-cache-*` or `.css-*`. Only use: data-testid selectors, Streamlit component selectors, or custom classes we create ourselves.
+
+### 5. No nth-child Hacks
+Never use `:nth-child(...)` or `:nth-of-type(...)` for navigation structure. Never create sidebar sections through CSS. Create section headers in Python, then style them with CSS.
+
+### 6. No Fake UI Through CSS
+Do not create application structure via `content: "..."`. All structure must exist in Python. CSS should only style, never create application structure.
+
+### 7. No Layout Hacks
+Avoid `position: absolute`, `position: fixed`, `transform`, and negative margins unless absolutely necessary. Use Streamlit layouts (columns, containers).
+
+### 8. No Aggressive Plotly Styling
+Never style Plotly containers with `overflow: hidden`, fixed heights, or absolute positioning. Do not force chart dimensions. Let Plotly remain responsive. Cards wrap charts. Charts do not wrap cards.
+
+### 9. No Column Selectors
+Avoid `div[data-testid="column"]:has(...)` — this is fragile. Instead, create explicit wrapper classes like `chart-card`, `metric-card`, `table-card` and style those.
+
+### 10. Use Reusable Components
+Create reusable classes: `.metric-card`, `.chart-card`, `.table-card`, `.page-header`, `.sidebar-section`. Avoid huge one-off selectors.
+
+### 11. CSS File Structure
+Keep exactly: ui/assets/logo.svg, ui/styles/base.py, ui/styles/sidebar.py, ui/styles/cards.py. Do not create more style files unless necessary. Typography belongs in base.py.
+
+### 12. Keep CSS Small
+Target: base.py <= 150 lines, sidebar.py <= 150 lines, cards.py <= 200 lines. Avoid CSS bloat. Prefer clarity.
+
+### 13. Build UI In Passes
+Never redesign everything simultaneously. Work in this order: Pass 1 Typography, Pass 2 Sidebar, Pass 3 Metric cards, Pass 4 Chart cards, Pass 5 Tables, Pass 6 Spacing & polish. Finish one layer before moving to the next.
+
+### 14. Verify Before Every UI Change
+Before declaring a UI task complete, verify: CSS is loading correctly, no CSS text visible, no graph clipping, no overflow issues, no broken sidebar, no duplicated headings, no broken logo sizing, no functionality changed.
+
+### 15. Never Touch Business Logic
+UI work must never modify: data loading, ML code, models, predictions, routing, calculations, page logic. Only presentation.
+
+### 16. If Something Breaks
+Do not redesign further. First identify: what broke, which file caused it, why it broke. Then fix the root cause. Only continue styling after the foundation works again.
