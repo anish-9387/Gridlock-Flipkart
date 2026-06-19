@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="ui/assets/logo.png" width="280" alt="Rippl logo"/>
+  <img src="assets/logo.png" width="280" alt="Rippl logo"/>
 </p>
 
 <p align="center">
@@ -43,13 +43,14 @@ and is engineered for honesty and correctness, not just a headline accuracy numb
 ```bash
 pip install -r requirements.txt        # Python >= 3.10
 python train.py                        # build network, train models, write metrics
-streamlit run app.py                   # launch the dashboard
+cd frontend && pnpm install && pnpm dev # launch the dashboard
 ```
 
 Poetry also works:
 
 ```bash
-poetry install && poetry run python train.py && poetry run streamlit run app.py
+poetry install && poetry run python train.py
+cd frontend && pnpm install && pnpm dev
 ```
 
 > **Reproducibility note:** all encoders and scalers are fit on the training slice only. Running `train.py` on a fresh clone produces the same `models/metrics.json` within floating-point tolerance.

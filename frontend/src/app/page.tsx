@@ -4,14 +4,15 @@ import { useEffect, useState } from 'react';
 import { api } from '@/lib/api';
 import type { DashboardStats } from '@/types';
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
-  PieChart, Pie, Cell, LineChart, Line, Area, AreaChart
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
+  PieChart, Pie, Cell, AreaChart, Area
 } from 'recharts';
 import {
-  Activity, AlertTriangle, MapPin, TrendingUp, Zap, Clock
+  Activity, Zap, AlertTriangle, MapPin, TrendingUp, Timer, LayoutList
 } from 'lucide-react';
 
-const IMPACT_COLORS = ['#22c55e', '#eab308', '#f97316', '#ef4444'];
+const IMPACT_COLORS = ['#059669', '#D97706', '#EA580C', '#DC2626'];
+const CHART_COLORS = ['#E85D2A', '#3B82F6'];
 
 export default function Dashboard() {
   const [stats, setStats] = useState<DashboardStats | null>(null);
@@ -29,44 +30,71 @@ export default function Dashboard() {
     name: ['Low', 'Medium', 'High', 'Critical'][Number(k)] || k, value: v
   }));
   const causeData = Object.entries(stats.cause_distribution).map(([k, v]) => ({ name: k, value: v }));
-  const corridorData = Object.entries(stats.corridor_distribution).map(([k, v]) => ({ name: k, value: v }));
   const tsData = Object.entries(stats.time_series).slice(-30).map(([k, v]) => ({ date: k.slice(5, 10), count: v }));
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-100">Operational Dashboard</h1>
-        <p className="text-slate-400 mt-1">Real-time overview of traffic event intelligence</p>
+    <div className="space-y-7 animate-fade-in">
+      <div className="page-header">
+        <h1 className="page-title">Operational Dashboard</h1>
+        <p className="page-desc">Real-time overview of traffic event intelligence</p>
       </div>
 
       {/* Metric Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <MetricCard icon={Activity} value={stats.total_events.toLocaleString()} label="Total Events" color="blue" />
-        <MetricCard icon={Zap} value={stats.active_events} label="Active Events" color="amber" delta={`${(stats.active_events / stats.total_events * 100).toFixed(1)}%`} />
-        <MetricCard icon={AlertTriangle} value={stats.high_impact_events} label="High / Critical Impact" color="red" delta={`${(stats.high_impact_events / stats.total_events * 100).toFixed(1)}%`} />
-        <MetricCard icon={MapPin} value={stats.top_junction} label="Most Vulnerable" color="purple" delta={stats.junctions_count + ' junctions'} />
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <MetricCard
+          icon={Activity}
+          value={stats.total_events.toLocaleString()}
+          label="Total Events"
+          color="primary"
+        />
+        <MetricCard
+          icon={Zap}
+          value={stats.active_events}
+          label="Active Events"
+          color="amber"
+          delta={`${(stats.active_events / stats.total_events * 100).toFixed(1)}% of total`}
+        />
+        <MetricCard
+          icon={AlertTriangle}
+          value={stats.high_impact_events}
+          label="High / Critical Impact"
+          color="red"
+          delta={`${(stats.high_impact_events / stats.total_events * 100).toFixed(1)}% of total`}
+        />
+        <MetricCard
+          icon={MapPin}
+          value={stats.top_junction}
+          label="Most Vulnerable"
+          color="violet"
+          delta={`${stats.junctions_count} junctions`}
+        />
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Event Type */}
         <div className="card">
-          <h3 className="text-sm font-semibold text-slate-300 mb-4">Event Type Distribution</h3>
-          <ResponsiveContainer width="100%" height={280}>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold">Event Type Distribution</h3>
+            <TrendingUp size={16} className="text-ink-muted" />
+          </div>
+          <ResponsiveContainer width="100%" height={240}>
             <PieChart>
-              <Pie data={typeData} cx="50%" cy="50%" innerRadius={70} outerRadius={110}
+              <Pie data={typeData} cx="50%" cy="50%" innerRadius={60} outerRadius={95}
                 paddingAngle={4} dataKey="value" stroke="none">
                 {typeData.map((_, i) => (
-                  <Cell key={i} fill={['#3b82f6', '#f97316'][i]} />
+                  <Cell key={i} fill={CHART_COLORS[i % 2]} />
                 ))}
               </Pie>
-              <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#f1f5f9' }} />
+              <Tooltip
+                contentStyle={{ background: '#fff', border: '1px solid #E7E2DC', borderRadius: 10, color: '#1C1917', boxShadow: '0 4px 14px rgba(28,25,23,0.08)' }}
+              />
             </PieChart>
           </ResponsiveContainer>
           <div className="flex justify-center gap-6 mt-2">
             {typeData.map((d, i) => (
               <div key={d.name} className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-full" style={{ background: ['#3b82f6', '#f97316'][i] }} />
-                <span className="text-xs text-slate-400 capitalize">{d.name} ({d.value})</span>
+                <div className="w-2.5 h-2.5 rounded-full" style={{ background: CHART_COLORS[i % 2] }} />
+                <span className="text-xs text-ink-secondary capitalize">{d.name} ({d.value})</span>
               </div>
             ))}
           </div>
@@ -74,14 +102,18 @@ export default function Dashboard() {
 
         {/* Impact Level */}
         <div className="card">
-          <h3 className="text-sm font-semibold text-slate-300 mb-4">Impact Level Distribution</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold">Impact Level Distribution</h3>
+            <LayoutList size={16} className="text-ink-muted" />
+          </div>
           <ResponsiveContainer width="100%" height={280}>
             <BarChart data={impactData}>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="name" tick={{ fill: '#94a3b8', fontSize: 12 }} />
-              <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} />
-              <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#f1f5f9' }} />
-              <Bar dataKey="value" radius={[6, 6, 0, 0]} stroke="none">
+              <XAxis dataKey="name" tick={{ fill: '#A8A29E', fontSize: 12 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: '#A8A29E', fontSize: 12 }} axisLine={false} tickLine={false} />
+              <Tooltip
+                contentStyle={{ background: '#fff', border: '1px solid #E7E2DC', borderRadius: 10, color: '#1C1917', boxShadow: '0 4px 14px rgba(28,25,23,0.08)' }}
+              />
+              <Bar dataKey="value" radius={[8, 8, 0, 0]} stroke="none" maxBarSize={48}>
                 {impactData.map((_, i) => (
                   <Cell key={i} fill={IMPACT_COLORS[i % 4]} />
                 ))}
@@ -94,19 +126,22 @@ export default function Dashboard() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Top Causes */}
         <div className="card">
-          <h3 className="text-sm font-semibold text-slate-300 mb-4">Top Event Causes</h3>
-          <div className="space-y-2">
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold">Top Event Causes</h3>
+            <Activity size={16} className="text-ink-muted" />
+          </div>
+          <div className="space-y-3">
             {causeData.slice(0, 7).reverse().map((d) => {
               const maxVal = causeData[0]?.value || 1;
               const pct = (d.value / maxVal) * 100;
               return (
                 <div key={d.name} className="flex items-center gap-3">
-                  <span className="text-xs text-slate-400 w-28 truncate text-right capitalize">{d.name.replace(/_/g, ' ')}</span>
-                  <div className="flex-1 h-2.5 bg-surface-lighter rounded-full overflow-hidden">
-                    <div className="h-full rounded-full bg-gradient-to-r from-primary-500 to-primary-400 transition-all duration-500"
+                  <span className="text-xs text-ink-secondary w-20 sm:w-28 truncate text-right capitalize">{d.name.replace(/_/g, ' ')}</span>
+                  <div className="flex-1 h-2 bg-surface-border/60 rounded-full overflow-hidden">
+                    <div className="h-full rounded-full bg-primary-500 transition-all duration-700 ease-out"
                       style={{ width: `${pct}%` }} />
                   </div>
-                  <span className="text-xs font-medium text-slate-400 w-10 text-right">{d.value}</span>
+                  <span className="text-xs font-medium text-ink-secondary w-10 text-right tabular-nums">{d.value}</span>
                 </div>
               );
             })}
@@ -115,20 +150,24 @@ export default function Dashboard() {
 
         {/* Time Series */}
         <div className="card">
-          <h3 className="text-sm font-semibold text-slate-300 mb-4">Events Over Time</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold">Events Over Time</h3>
+            <Timer size={16} className="text-ink-muted" />
+          </div>
           <ResponsiveContainer width="100%" height={280}>
             <AreaChart data={tsData}>
               <defs>
                 <linearGradient id="colorCount" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
-                  <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
+                  <stop offset="5%" stopColor="#E85D2A" stopOpacity={0.15} />
+                  <stop offset="95%" stopColor="#E85D2A" stopOpacity={0} />
                 </linearGradient>
               </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke="#334155" />
-              <XAxis dataKey="date" tick={{ fill: '#94a3b8', fontSize: 10 }} />
-              <YAxis tick={{ fill: '#94a3b8', fontSize: 12 }} />
-              <Tooltip contentStyle={{ background: '#1e293b', border: '1px solid #334155', borderRadius: 8, color: '#f1f5f9' }} />
-              <Area type="monotone" dataKey="count" stroke="#3b82f6" strokeWidth={2} fill="url(#colorCount)" />
+              <XAxis dataKey="date" tick={{ fill: '#A8A29E', fontSize: 10 }} axisLine={false} tickLine={false} />
+              <YAxis tick={{ fill: '#A8A29E', fontSize: 12 }} axisLine={false} tickLine={false} />
+              <Tooltip
+                contentStyle={{ background: '#fff', border: '1px solid #E7E2DC', borderRadius: 10, color: '#1C1917', boxShadow: '0 4px 14px rgba(28,25,23,0.08)' }}
+              />
+              <Area type="monotone" dataKey="count" stroke="#E85D2A" strokeWidth={2} fill="url(#colorCount)" />
             </AreaChart>
           </ResponsiveContainer>
         </div>
@@ -137,10 +176,13 @@ export default function Dashboard() {
       {/* Model Performance */}
       {stats.metrics && (stats.metrics.impact_accuracy || stats.metrics.cascade_accuracy) && (
         <div className="card">
-          <h3 className="text-sm font-semibold text-slate-300 mb-4">Model Performance</h3>
+          <div className="flex items-center justify-between mb-4">
+            <h3 className="text-sm font-semibold">Model Performance</h3>
+            <Activity size={16} className="text-ink-muted" />
+          </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-            <MetricBadge label="Impact Classifier Accuracy" value={`${((stats.metrics.impact_accuracy || 0) * 100).toFixed(1)}%`} color="blue" />
-            <MetricBadge label="Cascade Classifier Accuracy" value={`${((stats.metrics.cascade_accuracy || 0) * 100).toFixed(1)}%`} color="green" />
+            <MetricBadge label="Impact Accuracy" value={`${((stats.metrics.impact_accuracy || 0) * 100).toFixed(1)}%`} color="primary" />
+            <MetricBadge label="Cascade Accuracy" value={`${((stats.metrics.cascade_accuracy || 0) * 100).toFixed(1)}%`} color="emerald" />
             <MetricBadge label="Resolution MAE" value={`${(stats.metrics.resolution_mae || 0).toFixed(0)} min`} color="amber" />
           </div>
         </div>
@@ -149,44 +191,58 @@ export default function Dashboard() {
   );
 }
 
-function MetricCard({ icon: Icon, value, label, delta, color }: any) {
-  const colors: Record<string, string> = {
-    blue: 'from-blue-500/20 to-blue-600/10 border-blue-500/30',
-    amber: 'from-amber-500/20 to-amber-600/10 border-amber-500/30',
-    red: 'from-red-500/20 to-red-600/10 border-red-500/30',
-    purple: 'from-purple-500/20 to-purple-600/10 border-purple-500/30',
+function MetricCard({ icon: Icon, value, label, color, delta }: any) {
+  const borders: Record<string, string> = {
+    primary: 'border-l-primary-500',
+    amber: 'border-l-amber-500',
+    red: 'border-l-red-500',
+    violet: 'border-l-violet-500',
+  };
+  const icons: Record<string, string> = {
+    primary: 'text-primary-500',
+    amber: 'text-amber-500',
+    red: 'text-red-500',
+    violet: 'text-violet-500',
   };
   return (
-    <div className={`card bg-gradient-to-br ${colors[color] || colors.blue}`}>
+    <div className={`card border-l-4 ${borders[color] || borders.primary} relative overflow-hidden`}>
       <div className="flex items-start justify-between">
-        <Icon size={22} className="text-slate-400" />
+        <div className="min-w-0">
+          <p className="metric-value">{value}</p>
+          <p className="metric-label mt-1">{label}</p>
+          {delta && <p className="text-xs text-ink-muted mt-1.5">{delta}</p>}
+        </div>
+        <div className={`w-10 h-10 rounded-xl bg-surface-subtle flex items-center justify-center ${icons[color] || icons.primary}`}>
+          <Icon size={20} />
+        </div>
       </div>
-      <p className="metric-value mt-3 text-slate-100 truncate">{value}</p>
-      <p className="metric-label mt-1">{label}</p>
-      {delta && <p className="text-xs text-slate-500 mt-1">{delta}</p>}
     </div>
   );
 }
 
 function MetricBadge({ label, value, color }: { label: string; value: string; color: string }) {
-  const colors: Record<string, string> = { blue: 'text-blue-400', green: 'text-emerald-400', amber: 'text-amber-400' };
+  const colors: Record<string, string> = {
+    primary: 'text-primary-600 bg-primary-50',
+    emerald: 'text-emerald-600 bg-emerald-50',
+    amber: 'text-amber-600 bg-amber-50',
+  };
   return (
-    <div className="bg-surface-lighter rounded-lg p-4 text-center">
-      <p className={`text-2xl font-bold ${colors[color]}`}>{value}</p>
-      <p className="text-xs text-slate-400 mt-1">{label}</p>
+    <div className="rounded-xl bg-surface-subtle p-4 text-center border border-surface-border/40">
+      <p className={`text-2xl font-bold ${colors[color]?.split(' ')[0] || 'text-ink'}`}>{value}</p>
+      <p className="text-xs text-ink-secondary mt-1">{label}</p>
     </div>
   );
 }
 
 function LoadingSkeleton() {
   return (
-    <div className="space-y-6 animate-pulse">
-      <div className="h-8 w-64 bg-surface-lighter rounded-lg" />
-      <div className="grid grid-cols-4 gap-4">
-        {[1, 2, 3, 4].map(i => <div key={i} className="h-28 bg-surface-lighter rounded-xl" />)}
+    <div className="space-y-7 animate-pulse">
+      <div className="h-7 w-56 bg-surface-border/50 rounded-lg" />
+      <div className="grid grid-cols-4 gap-5">
+        {[1, 2, 3, 4].map(i => <div key={i} className="h-28 bg-surface-border/30 rounded-card" />)}
       </div>
       <div className="grid grid-cols-2 gap-6">
-        {[1, 2].map(i => <div key={i} className="h-80 bg-surface-lighter rounded-xl" />)}
+        {[1, 2].map(i => <div key={i} className="h-80 bg-surface-border/30 rounded-card" />)}
       </div>
     </div>
   );
@@ -194,10 +250,10 @@ function LoadingSkeleton() {
 
 function ErrorState() {
   return (
-    <div className="flex flex-col items-center justify-center h-96 text-slate-400">
-      <AlertTriangle size={48} className="mb-4" />
-      <p className="text-lg font-medium">Failed to load dashboard</p>
-      <p className="text-sm mt-1">Make sure the API server is running on port 8000</p>
+    <div className="empty-state h-96">
+      <AlertTriangle size={40} className="mb-4 text-ink-muted" />
+      <p className="text-base font-medium text-ink-secondary">Failed to load dashboard</p>
+      <p className="text-sm text-ink-muted mt-1">Make sure the API server is running on port 8000</p>
     </div>
   );
 }

@@ -1,0 +1,89 @@
+{
+  "feature_count": 28,
+  "train_samples": 6538,
+  "test_samples": 1635,
+  "impact": {
+    "name": "Impact Classifier",
+    "accuracy": 0.7149847094801223,
+    "balanced_accuracy": 0.6343859649122807,
+    "macro_f1": 0.6204259246080832,
+    "confusion_matrix": [
+      [
+        264,
+        11,
+        0,
+        0
+      ],
+      [
+        122,
+        784,
+        5,
+        1
+      ],
+      [
+        6,
+        247,
+        51,
+        19
+      ],
+      [
+        0,
+        10,
+        45,
+        70
+      ]
+    ],
+    "majority_baseline": 0.5577981651376147,
+    "accuracy_reliable_subset": 0.7342047930283224
+  },
+  "duration_prolonged": {
+    "name": "Prolonged-Duration Classifier (>60min)",
+    "accuracy": 0.5272331154684096,
+    "balanced_accuracy": 0.48449044330228075,
+    "macro_f1": 0.48173374613003095,
+    "confusion_matrix": [
+      [
+        189,
+        94
+      ],
+      [
+        123,
+        53
+      ]
+    ],
+    "majority_baseline": 0.616557734204793,
+    "roc_auc": 0.49569346289752647,
+    "pr_auc": 0.3831735097197888,
+    "positive_rate": 0.38344226579520696,
+    "cv_auc_in_distribution": 0.6075359476858522,
+    "note": "Duration is the hard/weak target: in-distribution AUC ~0.59, near-random out-of-time. Lean on AFT median + cascade risk."
+  },
+  "resolution": {
+    "name": "AFT Resolution",
+    "mae": 239.07607331930365,
+    "medae": 59.983107823274736,
+    "n": 457
+  },
+  "cascade": {
+    "name": "Cascade Classifier",
+    "accuracy": 0.9217125382262997,
+    "balanced_accuracy": 0.859085100945566,
+    "macro_f1": 0.7854453894543456,
+    "confusion_matrix": [
+      [
+        1405,
+        100
+      ],
+      [
+        28,
+        102
+      ]
+    ],
+    "majority_baseline": 0.9204892966360856,
+    "roc_auc": 0.9055226169179657,
+    "pr_auc": 0.635356096702421,
+    "positive_rate": 0.07951070336391437,
+    "brier_raw": 0.08911865762006513,
+    "brier_calibrated": 0.037916551278830674
+  }
+}

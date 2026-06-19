@@ -44,35 +44,35 @@ export default function SimilarityPage() {
   };
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-100">Event Similarity Search</h1>
-        <p className="text-slate-400 mt-1">Find historical events similar to any event profile</p>
+    <div className="space-y-7 animate-fade-in">
+      <div className="page-header">
+        <h1 className="page-title">Event Similarity Search</h1>
+        <p className="page-desc">Find historical events similar to any event profile</p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Form */}
         <div className="lg:col-span-1 card">
-          <h3 className="text-sm font-semibold text-slate-300 mb-4 flex items-center gap-2">
-            <Search size={16} /> Search Criteria
+          <h3 className="text-sm font-semibold mb-4 flex items-center gap-2">
+            <Search size={16} className="text-primary-500" /> Search Criteria
           </h3>
           <form onSubmit={handleSearch} className="space-y-3.5">
             <div>
-              <label className="text-xs font-medium text-slate-400 mb-1 block">Event Cause</label>
+              <label className="input-label">Event Cause</label>
               <select className="select-field" value={form.event_cause}
                 onChange={e => setForm(p => ({ ...p, event_cause: e.target.value }))}>
                 {EVENT_CAUSES.map(c => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-slate-400 mb-1 block">Corridor</label>
+              <label className="input-label">Corridor</label>
               <select className="select-field" value={form.corridor}
                 onChange={e => setForm(p => ({ ...p, corridor: e.target.value }))}>
                 {CORRIDORS.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
             </div>
             <div>
-              <label className="text-xs font-medium text-slate-400 mb-1 block">Zone</label>
+              <label className="input-label">Zone</label>
               <select className="select-field" value={form.zone}
                 onChange={e => setForm(p => ({ ...p, zone: e.target.value }))}>
                 {ZONES.map(z => <option key={z} value={z}>{z}</option>)}
@@ -80,7 +80,7 @@ export default function SimilarityPage() {
             </div>
             <div className="grid grid-cols-2 gap-3">
               <div>
-                <label className="text-xs font-medium text-slate-400 mb-1 block">Type</label>
+                <label className="input-label">Type</label>
                 <select className="select-field" value={form.event_type}
                   onChange={e => setForm(p => ({ ...p, event_type: e.target.value }))}>
                   <option value="unplanned">Unplanned</option>
@@ -88,7 +88,7 @@ export default function SimilarityPage() {
                 </select>
               </div>
               <div>
-                <label className="text-xs font-medium text-slate-400 mb-1 block">Priority</label>
+                <label className="input-label">Priority</label>
                 <select className="select-field" value={form.priority}
                   onChange={e => setForm(p => ({ ...p, priority: e.target.value }))}>
                   <option value="Low">Low</option>
@@ -96,7 +96,7 @@ export default function SimilarityPage() {
                 </select>
               </div>
             </div>
-            <button type="submit" disabled={loading} className="btn-primary w-full justify-center mt-2">
+            <button type="submit" disabled={loading} className="btn-primary w-full mt-2">
               {loading ? 'Searching...' : 'Find Similar Events'}
             </button>
           </form>
@@ -104,14 +104,15 @@ export default function SimilarityPage() {
 
         {/* Results */}
         <div className="lg:col-span-2 space-y-3">
-          <h3 className="text-sm font-semibold text-slate-300 flex items-center gap-2">
-            <ArrowRight size={16} /> Results
-            {results.length > 0 && <span className="text-xs font-normal text-slate-500">({results.length} found)</span>}
-          </h3>
+          <div className="flex items-center gap-2">
+            <ArrowRight size={16} className="text-primary-500" />
+            <h3 className="text-sm font-semibold">Results</h3>
+            {results.length > 0 && <span className="text-xs text-ink-muted">({results.length} found)</span>}
+          </div>
           {results.length === 0 && !loading && (
-            <div className="card flex flex-col items-center justify-center h-64 text-slate-500">
-              <Search size={40} className="mb-3 opacity-30" />
-              <p className="text-sm">Set criteria and search for similar historical events</p>
+            <div className="card flex flex-col items-center justify-center h-64">
+              <Search size={36} className="mb-3 text-ink-muted/40" />
+              <p className="text-sm text-ink-muted">Set criteria and search for similar historical events</p>
             </div>
           )}
           {loading && (
@@ -129,38 +130,38 @@ export default function SimilarityPage() {
 }
 
 function SimilarEventCard({ event, rank }: { event: SimilarEvent; rank: number }) {
-  const impactColors: Record<string, string> = {
-    Low: 'bg-emerald-500/15 text-emerald-400',
-    Medium: 'bg-yellow-500/15 text-yellow-400',
-    High: 'bg-orange-500/15 text-orange-400',
-    Critical: 'bg-red-500/15 text-red-400',
+  const impactStyles: Record<string, string> = {
+    Low: 'badge-low',
+    Medium: 'badge-medium',
+    High: 'badge-high',
+    Critical: 'badge-critical',
   };
 
   const simPct = (event.similarity_score * 100).toFixed(0);
 
   return (
     <div className="card-hover flex items-start gap-4 !p-4">
-      <div className="w-8 h-8 rounded-full bg-primary-500/15 text-primary-400 flex items-center justify-center text-sm font-bold shrink-0">
+      <div className="w-8 h-8 rounded-xl bg-primary-50 text-primary-600 flex items-center justify-center text-sm font-bold shrink-0">
         {rank}
       </div>
       <div className="flex-1 min-w-0">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="text-sm font-medium text-slate-200 capitalize">{event.event_cause.replace(/_/g, ' ')}</span>
-          <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${impactColors[event.impact_label] || ''}`}>
+          <span className="text-sm font-medium text-ink capitalize">{event.event_cause.replace(/_/g, ' ')}</span>
+          <span className={`${impactStyles[event.impact_label] || 'bg-slate-100 text-slate-600'} px-2 py-0.5 rounded text-[10px] font-medium`}>
             {event.impact_label}
           </span>
         </div>
-        <p className="text-xs text-slate-400 mt-1">
+        <p className="text-xs text-ink-secondary mt-1">
           {event.corridor} · {event.zone} · {event.junction && event.junction !== 'unknown' ? event.junction : '—'}
         </p>
-        <div className="flex items-center gap-4 mt-2 text-xs text-slate-500">
+        <div className="flex items-center gap-4 mt-2 text-xs text-ink-muted">
           <span className="flex items-center gap-1"><Clock size={12} /> {event.resolution_minutes} min</span>
           <span className="flex items-center gap-1"><Shield size={12} /> {event.priority} priority</span>
         </div>
       </div>
       <div className="text-right shrink-0">
-        <p className="text-lg font-bold text-primary-400">{simPct}%</p>
-        <p className="text-[10px] text-slate-500">similar</p>
+        <p className="text-lg font-bold text-primary-500 tabular-nums">{simPct}%</p>
+        <p className="text-[10px] text-ink-muted">similar</p>
       </div>
     </div>
   );
