@@ -5,18 +5,30 @@ def get_base_css():
 :root {
   --bg-primary: #F5F3EE;
   --bg-card: #FFFFFF;
+  --bg-sidebar: #FAF8F3;
+  --bg-hover: #F4EFE8;
+  --bg-subtle: #F8F6F2;
+  --bg-row-even: #FCFBF8;
+  --bg-row-hover: #F6F2ED;
   --text-primary: #111827;
   --text-secondary: #6B7280;
   --text-muted: #9CA3AF;
   --accent: #E85D2A;
   --accent-hover: #D9481C;
   --accent-light: #FEF3EC;
+  --nav-active-bg: #FFF4EB;
+  --nav-active-text: #B45309;
+  --nav-active-bar: #F97316;
   --border: #E5E2DC;
   --border-light: #ECE7E1;
   --success: #10B981;
+  --success-bg: #F0FDF4;
   --warning: #F59E0B;
+  --warning-bg: #FFFBEB;
   --danger: #EF4444;
+  --danger-bg: #FEF2F2;
   --info: #3B82F6;
+  --shadow: rgba(0,0,0,0.03);
   --radius-card: 16px;
   --radius-button: 10px;
   --radius-input: 10px;
@@ -209,22 +221,50 @@ hr {
 }
 
 .stWarning {
-  background-color: #FFFBEB;
+  background-color: var(--warning-bg);
   border: 1px solid var(--warning);
   border-radius: 8px;
   color: var(--text-primary);
 }
 
 .stSuccess {
-  background-color: #F0FDF4;
+  background-color: var(--success-bg);
   border: 1px solid var(--success);
   border-radius: 8px;
   color: var(--text-primary);
 }
 
 .stError {
-  background-color: #FEF2F2;
+  background-color: var(--danger-bg);
   border: 1px solid var(--danger);
   border-radius: 8px;
   color: var(--text-primary);
 }'''
+
+
+def get_dark_css():
+    # Injected only when Streamlit's active theme is dark (st.context.theme).
+    return ''':root {
+    --bg-primary: #14110D;
+    --bg-card: #1E1A15;
+    --bg-sidebar: #19150F;
+    --bg-hover: #2A241C;
+    --bg-subtle: #221E17;
+    --bg-row-even: #221E17;
+    --bg-row-hover: #2A241C;
+    --text-primary: #F3EFE8;
+    --text-secondary: #B7AEA0;
+    --text-muted: #8B8275;
+    --accent: #F2703D;
+    --accent-hover: #E85D2A;
+    --accent-light: #2C1D12;
+    --nav-active-bg: #2A1C10;
+    --nav-active-text: #F0A55A;
+    --nav-active-bar: #F97316;
+    --border: #2F2820;
+    --border-light: #29231C;
+    --success-bg: #11231A;
+    --warning-bg: #2A2110;
+    --danger-bg: #2A1414;
+    --shadow: rgba(0,0,0,0.35);
+  }'''

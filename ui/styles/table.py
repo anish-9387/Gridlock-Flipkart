@@ -2,10 +2,10 @@ def get_table_css():
     return '''
 
 .stDataFrame {
-  border: 1px solid #ECE7E1;
+  border: 1px solid var(--border-light);
   border-radius: 18px;
   overflow: hidden;
-  background: #FFFFFF;
+  background: var(--bg-card);
   box-shadow: 0 1px 2px rgba(0,0,0,.03), 0 8px 24px rgba(0,0,0,.04);
 }
 
@@ -15,13 +15,13 @@ def get_table_css():
 }
 
 .stDataFrame thead tr th {
-  background-color: #F8F6F2;
-  color: #6B7280;
+  background-color: var(--bg-subtle);
+  color: var(--text-secondary);
   font-size: 13px;
   font-weight: 600;
   letter-spacing: 0.04em;
   text-transform: uppercase;
-  border-bottom: 1px solid #ECE7E1;
+  border-bottom: 1px solid var(--border-light);
   padding: 14px 16px;
   text-align: left;
 }
@@ -29,8 +29,8 @@ def get_table_css():
 .stDataFrame tbody tr td {
   padding: 14px 16px;
   font-size: 14px;
-  color: #111827;
-  border-bottom: 1px solid #ECE7E1;
+  color: var(--text-primary);
+  border-bottom: 1px solid var(--border-light);
 }
 
 .stDataFrame tbody tr:last-child td {
@@ -38,16 +38,16 @@ def get_table_css():
 }
 
 .stDataFrame tbody tr:nth-child(even) td {
-  background-color: #FCFBF8;
+  background-color: var(--bg-row-even);
 }
 
 .stDataFrame tbody tr:hover td {
-  background-color: #F6F2ED;
+  background-color: var(--bg-row-hover);
 }
 
 .stDataFrame tbody tr td:first-child {
   font-weight: 600;
-  color: #111827;
+  color: var(--text-primary);
 }
 
 '''

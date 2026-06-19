@@ -1,8 +1,8 @@
 def get_cards_css():
     return '''
 div[data-testid="stMetric"] {
-  background-color: #FFFFFF;
-  border: 1px solid #ECE7E1;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-light);
   border-radius: 14px;
   padding: 1.25rem 1.5rem;
   min-height: 110px;
@@ -10,7 +10,7 @@ div[data-testid="stMetric"] {
 }
 
 div[data-testid="stMetric"] label {
-  color: #6B7280;
+  color: var(--text-secondary);
   font-size: 0.75rem;
   font-weight: 600;
   text-transform: uppercase;
@@ -19,7 +19,7 @@ div[data-testid="stMetric"] label {
 }
 
 div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
-  color: #111827;
+  color: var(--text-primary);
   font-size: 1.5rem;
   font-weight: 700;
   letter-spacing: -0.02em;
@@ -32,8 +32,8 @@ div[data-testid="stMetric"] div[data-testid="stMetricDelta"] {
 }
 
 div.stPlotlyChart {
-  background: #FFFFFF;
-  border: 1px solid #ECE7E1;
+  background: var(--bg-card);
+  border: 1px solid var(--border-light);
   border-radius: 14px;
   padding: 4px;
   box-shadow: 0 2px 10px rgba(0,0,0,0.03);
@@ -41,32 +41,32 @@ div.stPlotlyChart {
 }
 
 div[data-testid="stExpander"] {
-  background-color: #FFFFFF;
-  border: 1px solid #E5E2DC;
+  background-color: var(--bg-card);
+  border: 1px solid var(--border);
   border-radius: 8px;
 }
 
 div[data-testid="stExpander"] summary {
   font-weight: 500;
-  color: #111827;
+  color: var(--text-primary);
 }
 
 .stTabs {
-  background-color: #FFFFFF;
+  background-color: var(--bg-card);
   border-radius: 8px;
   padding: 0.25rem 0.25rem 0;
 }
 
 .stTabs button {
-  color: #9CA3AF;
+  color: var(--text-muted);
   font-size: 0.88rem;
 }
 
 .stTabs button:hover {
-  color: #111827;
+  color: var(--text-primary);
 }
 
 .stTabs button[aria-selected="true"] {
-  color: #E85D2A;
-  border-bottom: 2px solid #E85D2A;
+  color: var(--accent);
+  border-bottom: 2px solid var(--accent);
 }'''

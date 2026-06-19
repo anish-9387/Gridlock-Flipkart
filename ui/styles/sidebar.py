@@ -32,7 +32,7 @@ button[data-testid="collapsedControl"]::after {
   content: "‹";
   font-size: 22px;
   font-weight: 300;
-  color: #9CA3AF;
+  color: var(--text-muted);
   line-height: 1;
   display: block;
 }
@@ -56,14 +56,14 @@ section[data-testid="stSidebar"] .element-container:first-child {
 }
 
 section[data-testid="stSidebar"] {
-  background-color: #FAF8F3;
-  border-right: 1px solid #E7E1D8;
+  background-color: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
 }
 
 /* Divider */
 section[data-testid="stSidebar"] hr {
   margin: 1rem 0;
-  border-color: #E7E1D8;
+  border-color: var(--border);
 }
 
 /* Remove Streamlit spacing */
@@ -93,7 +93,7 @@ section[data-testid="stSidebar"] .stButton > button {
 
   font-size: 14px;
   font-weight: 500;
-  color: #6B7280;
+  color: var(--text-secondary);
 
   text-align: left !important;
 
@@ -117,14 +117,14 @@ section[data-testid="stSidebar"] .stButton > button > div {
 
 /* Hover */
 section[data-testid="stSidebar"] .stButton > button:hover {
-  background: #F4EFE8;
-  color: #111827;
+  background: var(--bg-hover);
+  color: var(--text-primary);
 }
 
 /* Active page */
 section[data-testid="stSidebar"] .stButton > button[kind="primary"] {
-  background: #FFF4EB;
-  color: #B45309 !important;
+  background: var(--nav-active-bg);
+  color: var(--nav-active-text) !important;
   font-weight: 600;
 }
 
@@ -138,7 +138,7 @@ section[data-testid="stSidebar"] .stButton > button[kind="primary"]::before {
 
   width: 4px;
 
-  background: #F97316;
+  background: var(--nav-active-bar);
   border-radius: 0 3px 3px 0;
 }
 
@@ -151,7 +151,7 @@ section[data-testid="stSidebar"] .stMarkdown:has(p) {
 section[data-testid="stSidebar"] .stMarkdown p {
   font-size: 11px;
   font-weight: 700;
-  color: #9CA3AF;
+  color: var(--text-muted);
 
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -174,18 +174,18 @@ section[data-testid="stSidebar"] div[data-testid="stMetric"] {
 }
 
 section[data-testid="stSidebar"] div[data-testid="stMetric"] label {
-  color: #9CA3AF;
+  color: var(--text-muted);
   font-size: 0.75rem;
 }
 
 section[data-testid="stSidebar"] div[data-testid="stMetric"] div[data-testid="stMetricValue"] {
   font-size: 1rem;
-  color: #111827;
+  color: var(--text-primary);
 }
 
 /* Sidebar text */
 section[data-testid="stSidebar"] strong {
-  color: #6B7280;
+  color: var(--text-secondary);
   font-size: 0.82rem;
   font-weight: 600;
   letter-spacing: normal;

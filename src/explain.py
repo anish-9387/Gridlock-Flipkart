@@ -67,7 +67,7 @@ def waterfall_figure(explanation, title='Why this prediction?'):
     fig.update_layout(
         title=title, height=360, xaxis_title='Contribution to prediction (log-odds)',
         margin=dict(l=10, r=10, t=40, b=10),
-        paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF",
+        paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)",
     )
     return fig
 

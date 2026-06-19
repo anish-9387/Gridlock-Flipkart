@@ -13,19 +13,41 @@ import plotly.express as px
 import plotly.graph_objects as go
 import plotly.io as pio
 
-pio.templates["domino"] = go.layout.Template(
-    layout=dict(
-        font=dict(family="Geist, -apple-system, BlinkMacSystemFont, sans-serif", size=12, color="#111827"),
-        paper_bgcolor="#FFFFFF",
-        plot_bgcolor="#FFFFFF",
+def _domino_template(font_color, tick_color, grid_color, zero_color):
+    # Transparent backgrounds so charts inherit the (theme-driven) card colour;
+    # only font/grid colours differ between light and dark.
+    return go.layout.Template(layout=dict(
+        font=dict(family="Geist, -apple-system, BlinkMacSystemFont, sans-serif", size=12, color=font_color),
+        paper_bgcolor="rgba(0,0,0,0)",
+        plot_bgcolor="rgba(0,0,0,0)",
         hovermode="closest",
-        xaxis=dict(gridcolor="#F0EDE8", zerolinecolor="#E5E2DC", tickfont=dict(size=11, color="#6B7280"), title=dict(font=dict(size=12, color="#111827"))),
-        yaxis=dict(gridcolor="#F0EDE8", zerolinecolor="#E5E2DC", tickfont=dict(size=11, color="#6B7280"), title=dict(font=dict(size=12, color="#111827"))),
+        xaxis=dict(gridcolor=grid_color, zerolinecolor=zero_color, tickfont=dict(size=11, color=tick_color), title=dict(font=dict(size=12, color=font_color))),
+        yaxis=dict(gridcolor=grid_color, zerolinecolor=zero_color, tickfont=dict(size=11, color=tick_color), title=dict(font=dict(size=12, color=font_color))),
         colorway=["#E85D2A", "#D9481C", "#F59E0B", "#3B82F6", "#10B981", "#8B5CF6"],
         margin=dict(l=10, r=10, t=30, b=10),
-    )
-)
+    ))
+
+pio.templates["domino"] = _domino_template("#111827", "#6B7280", "#F0EDE8", "#E5E2DC")
+pio.templates["domino_dark"] = _domino_template("#F3EFE8", "#B7AEA0", "#2F2820", "#3A3228")
 pio.templates.default = "simple_white+domino"
+
+
+def _theme_is_dark():
+    """Authoritative active-theme signal (matches Streamlit's own widgets)."""
+    try:
+        return st.context.theme.type == "dark"
+    except Exception:
+        return False
+
+
+def _apply_plotly_theme():
+    """Flip the default Plotly template to match the active Streamlit theme."""
+    pio.templates.default = "plotly_dark+domino_dark" if _theme_is_dark() else "simple_white+domino"
+
+
+def _map_style():
+    """Map tiles that match the active theme."""
+    return "carto-darkmatter" if _theme_is_dark() else "carto-positron"
 
 import joblib
 import streamlit as st
@@ -51,7 +73,7 @@ from src.similarity import load_similarity_engine, find_similar_events
 from src.hotspot_detection import load_hotspot_models
 from src.vulnerability import compute_junction_vulnerability, get_fragile_junctions
 from src.knowledge_graph import build_event_graph, get_graph_stats
-from ui.styles.base import get_base_css
+from ui.styles.base import get_base_css, get_dark_css
 from ui.styles.sidebar import get_sidebar_css
 from ui.styles.cards import get_cards_css
 from ui.styles.table import get_table_css
@@ -133,13 +155,18 @@ def _read_logo():
 
 
 def _inject_css():
-    """Inject CSS via <style> in st.markdown (if DOMPurify strips it, no harm)."""
+    """Inject CSS via <style> in st.markdown (if DOMPurify strips it, no harm).
+    The dark override is appended only when Streamlit's active theme is dark, so
+    the custom surfaces stay in sync with Streamlit's own widgets."""
     css = get_base_css() + get_sidebar_css() + get_cards_css() + get_table_css()
+    if _theme_is_dark():
+        css += get_dark_css()
     st.markdown(f'<style>{css}</style>', unsafe_allow_html=True)
 
 
 def main():
     _inject_css()
+    _apply_plotly_theme()
     logo_svg = _read_logo()
     df = load_dataset()
     models, G, cen, (vec, mat, edata), hotspots = load_artifacts()
@@ -238,7 +265,7 @@ def page_dashboard(df, df_feat, vuln, metrics, cen):
                      color=[IMPACT_LABELS[i] for i in ic.index],
                      color_discrete_map={v: IMPACT_COLORS[k] for k, v in IMPACT_LABELS.items()})
         fig.update_layout(height=320, showlegend=False, xaxis_title="", yaxis_title="Events",
-                          paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF")
+                          paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, width='stretch')
     with b:
         st.subheader("Top Event Causes")
@@ -247,7 +274,7 @@ def page_dashboard(df, df_feat, vuln, metrics, cen):
                      color_continuous_scale='YlOrRd')
         fig.update_layout(height=320, xaxis_title="Events", yaxis_title="",
                           coloraxis_showscale=False,
-                          paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF")
+                          paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, width='stretch')
 
     with st.container():
@@ -255,7 +282,7 @@ def page_dashboard(df, df_feat, vuln, metrics, cen):
         dts = pd.to_datetime(df['start_datetime'], utc=True, errors='coerce')
         daily = dts.dt.date.value_counts().sort_index()
         fig = px.area(x=list(daily.index), y=daily.values, labels={'x': 'Date', 'y': 'Events'})
-        fig.update_layout(height=300, paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF")
+        fig.update_layout(height=300, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, width='stretch')
 
     st.markdown("---")
@@ -326,7 +353,7 @@ def page_prediction(df, models):
                      color_discrete_map={v: IMPACT_COLORS[k] for k, v in IMPACT_LABELS.items()},
                      text_auto='.0f')
         fig.update_layout(height=320, showlegend=False, yaxis_title="%",
-                          paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF")
+                          paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, width='stretch')
     with b:
         st.subheader("Why this prediction? (tree-SHAP)")
@@ -379,7 +406,7 @@ def page_early_warning(df, df_feat, models, G, cen):
                                  {'range': [40, 66], 'color': '#fdebd0'},
                                  {'range': [66, 100], 'color': '#fadbd8'}]}))
             fig.update_layout(height=300, margin=dict(t=40, b=10),
-                              paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF")
+                              paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
             st.plotly_chart(fig, width='stretch')
         with col2:
             st.metric("Recommended deployment lead time", f"{r['lead_time_hours']:.0f} hours before start")
@@ -411,7 +438,7 @@ def page_early_warning(df, df_feat, models, G, cen):
                               annotation_text='Peak-cluster precursor')
             fig.update_layout(height=320, xaxis_title="minutes", yaxis_title="junctions",
                               title="Percolation: clusters merge into a giant component at collapse",
-                              paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF")
+                              paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
             st.plotly_chart(fig, width='stretch')
 
 
@@ -442,7 +469,7 @@ def page_network(df, models, G, cen):
     snap = snap.assign(sz=snap['stress_level'] * 18 + 5)
     fig = px.scatter_mapbox(snap, lat='latitude', lon='longitude', color='stress_level',
                             size='sz', color_continuous_scale='YlOrRd',
-                            range_color=[0, 1], zoom=10.5, mapbox_style='carto-positron',
+                            range_color=[0, 1], zoom=10.5, mapbox_style=_map_style(),
                             hover_name='junction', height=480)
     s = prop[prop['is_source']].iloc[0]
     fig.add_trace(go.Scattermapbox(lat=[s['latitude']], lon=[s['longitude']], mode='markers',
@@ -456,7 +483,7 @@ def page_network(df, models, G, cen):
             fig = px.area(stats, x='time_min', y='giant_frac',
                           labels={'giant_frac': 'stressed network fraction', 'time_min': 'minutes'})
             fig.add_hline(y=0.5, line_dash='dash', annotation_text='network-critical (50%)')
-            fig.update_layout(height=300, paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF")
+            fig.update_layout(height=300, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
             st.plotly_chart(fig, width='stretch')
     with b:
         st.subheader("Diversion candidates")
@@ -523,7 +550,7 @@ def page_autopsy(df_feat, models, G):
             prop_viz = r['propagation'].assign(sz=r['propagation']['stress_level'] * 15 + 4)
             fig = px.scatter_mapbox(prop_viz, lat='latitude', lon='longitude',
                                     color='stress_level', color_continuous_scale='YlOrRd',
-                                    size='sz', zoom=10.5, mapbox_style='carto-positron', height=420)
+                                    size='sz', zoom=10.5, mapbox_style=_map_style(), height=420)
             st.plotly_chart(fig, width='stretch')
 
 
@@ -584,7 +611,7 @@ def page_vulnerability(vuln):
     fig = px.bar(show.head(15), x='junction', y='risk_score', color='risk_category',
                  color_discrete_map={'Low': '#2ECC71', 'Medium': '#F1C40F',
                                      'High': '#E67E22', 'Critical': '#E74C3C'}, text_auto='.1f')
-    fig.update_layout(height=420, xaxis_tickangle=-45, paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF")
+    fig.update_layout(height=420, xaxis_tickangle=-45, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
     st.plotly_chart(fig, width='stretch')
     cols = [c for c in ['junction', 'risk_score', 'risk_category', 'betweenness_norm',
                         'cascade_rate', 'degree', 'event_count', 'avg_resolution_minutes']
@@ -606,7 +633,7 @@ def page_hotspots(df, hotspots):
     sub = df[df['event_cause'].astype(str).str.lower() == str(cause).lower()].dropna(
         subset=['latitude', 'longitude']).head(500)
     fig = px.scatter_mapbox(sub, lat='latitude', lon='longitude', color='priority',
-                            zoom=10.5, mapbox_style='carto-positron', height=460)
+                            zoom=10.5, mapbox_style=_map_style(), height=460)
     for _, h in hdf.iterrows():
         fig.add_trace(go.Scattermapbox(lat=[h['avg_lat']], lon=[h['avg_lon']], mode='markers',
                                        marker=dict(size=h['count'] * 2 + 8, color='red', opacity=0.6),
@@ -726,7 +753,7 @@ def page_digital_twin(df, models):
                      color_discrete_map={v: IMPACT_COLORS[k] for k, v in IMPACT_LABELS.items()},
                      text='Risk')
         fig.update_layout(height=380, yaxis_title="Cascade probability (%)",
-                          paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF")
+                          paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
         st.plotly_chart(fig, width='stretch')
 
 
@@ -762,7 +789,7 @@ def page_knowledge_graph(df_feat):
                                          color=[IMPACT_COLORS.get(int(i), '#888') for i in nodes['impact_level']]),
                              text=nodes['event_cause'], hovertemplate="%{text}<extra></extra>"))
     fig.update_layout(height=560, showlegend=False, xaxis_visible=False, yaxis_visible=False,
-                      paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF")
+                      paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
     st.plotly_chart(fig, width='stretch')
 
 
@@ -800,7 +827,7 @@ def page_post_event(df, df_feat, models):
                                      name='model', line=dict(color='#3498DB')))
             fig.update_layout(height=320, xaxis_title="predicted probability",
                               yaxis_title="observed rate",
-                              paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF")
+                              paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
             st.plotly_chart(fig, width='stretch')
             st.caption(f"Brier score: {s.get('cascade_brier', 0):.4f} (lower is better)")
     with b:
@@ -808,7 +835,7 @@ def page_post_event(df, df_feat, models):
         ts = post_event.accuracy_over_time(freq='W')
         if len(ts):
             fig = px.line(ts, x='ts', y='accuracy', markers=True)
-            fig.update_layout(height=320, yaxis_range=[0, 1], paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF")
+            fig.update_layout(height=320, yaxis_range=[0, 1], paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
             st.plotly_chart(fig, width='stretch')
 
 
@@ -869,7 +896,7 @@ def page_model_card(metrics):
             fig = px.imshow(cm, text_auto=True, color_continuous_scale='Blues',
                             x=['No cascade', 'Cascade'], y=['No cascade', 'Cascade'],
                             labels=dict(x='Predicted', y='Actual'))
-            fig.update_layout(height=320, coloraxis_showscale=False, paper_bgcolor="#FFFFFF", plot_bgcolor="#FFFFFF")
+            fig.update_layout(height=320, coloraxis_showscale=False, paper_bgcolor="rgba(0,0,0,0)", plot_bgcolor="rgba(0,0,0,0)")
             st.plotly_chart(fig, width='stretch')
 
 
