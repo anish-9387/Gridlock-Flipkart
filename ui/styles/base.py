@@ -26,6 +26,17 @@ html, body, * {
   font-family: 'Geist', -apple-system, BlinkMacSystemFont, sans-serif !important;
 }
 
+/* Material Symbols icons must keep their icon font, otherwise the global rule
+   above breaks the ligatures and the raw name (e.g. "keyboard_double_arrow_left"
+   on the sidebar collapse button) shows instead of the glyph. Higher specificity
+   than the `*` rule, so this wins. */
+span[data-testid="stIconMaterial"],
+[data-testid="stSidebarCollapseButton"] span[data-testid="stIconMaterial"],
+[data-testid="stExpandSidebarButton"] span[data-testid="stIconMaterial"] {
+  font-family: 'Material Symbols Outlined' !important;
+  font-feature-settings: 'liga' !important;
+}
+
 .stApp {
   background-color: var(--bg-primary);
 }
