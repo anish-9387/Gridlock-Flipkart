@@ -3,7 +3,7 @@ import './globals.css';
 import Sidebar from '@/components/Sidebar';
 
 export const metadata: Metadata = {
-  title: 'CascadeIQ — Event Impact Intelligence',
+  title: 'Rippl — Event Impact Intelligence',
   description: 'Event Impact Forecasting & Response Intelligence System — Gridlock-Flipkart 2.0',
 };
 

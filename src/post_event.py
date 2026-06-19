@@ -1,5 +1,5 @@
 """
-CascadeIQ — Post-Event Learning System
+Rippl — Post-Event Learning System
 ======================================
 Closes the loop the brief asks for ("No post-event learning system"). Every
 prediction is persisted to disk; as ground truth arrives it is matched back and

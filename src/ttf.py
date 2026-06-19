@@ -1,5 +1,5 @@
 """
-CascadeIQ — Time-To-Failure (TTF) estimator
+Rippl — Time-To-Failure (TTF) estimator
 ============================================
 The vision-doc signature metric. We do not have ground-truth escalation
 timestamps in the data, so TTF is a TRANSPARENT, model-derived estimate (clearly

@@ -1,5 +1,5 @@
 """
-CascadeIQ — Feature Engineering (leakage-safe)
+Rippl — Feature Engineering (leakage-safe)
 ==============================================
 Builds the model feature matrix and *honest* prediction targets.
 

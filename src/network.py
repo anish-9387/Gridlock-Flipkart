@@ -1,5 +1,5 @@
 """
-CascadeIQ — Network Propagation Engine
+Rippl — Network Propagation Engine
 =======================================
 Builds a road-network graph of Bengaluru junctions directly from the event
 dataset (no OSMnx download dependency) and provides:

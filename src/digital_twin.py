@@ -1,5 +1,5 @@
 """
-CascadeIQ — Traffic Digital Twin Simulator
+Rippl — Traffic Digital Twin Simulator
 ==========================================
 Runs multiple event scenarios through the live models (impact, AFT resolution,
 calibrated cascade) plus the TTF estimate and junction fragility, for side-by-

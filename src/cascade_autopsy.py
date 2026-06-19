@@ -1,5 +1,5 @@
 """
-CascadeIQ — Cascade Autopsy (counterfactual intelligence)
+Rippl — Cascade Autopsy (counterfactual intelligence)
 =========================================================
 For a selected historical event:
 

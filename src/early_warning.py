@@ -1,5 +1,5 @@
 """
-CascadeIQ — Early Warning System
+Rippl — Early Warning System
 ================================
 Pre-event risk assessment so authorities can act BEFORE an event starts.
 

@@ -1,5 +1,5 @@
 """
-CascadeIQ — Explainability
+Rippl — Explainability
 ==========================
 Turns the exact tree-SHAP contributions (from models.explain_prediction, which
 uses XGBoost's native `pred_contribs` — no `shap` dependency required) into

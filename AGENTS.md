@@ -1,4 +1,4 @@
-# CascadeIQ — AGENTS.md
+# Rippl — AGENTS.md
 
 ## Project structure
 
@@ -56,7 +56,7 @@ python -c "from streamlit.testing.v1 import AppTest; \
 - `data/predictions_log.csv` is a runtime store (gitignored); the Post-Event page seeds it
   from history on demand.
 
-## Domino Labs UI Rules
+## Rippl UI Rules
 
 ### 1. Streamlit First
 This is a Streamlit application. Do NOT treat it like Next.js, React, Tailwind, Framer, or a custom frontend. Work WITH Streamlit. Do NOT fight Streamlit.

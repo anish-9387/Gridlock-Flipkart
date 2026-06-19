@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "cascadeiq"
+name = "rippl"
 version = "1.0.0"
 description = "Event Impact Forecasting & Response Intelligence System — Gridlock-Flipkart 2.0 Hackathon"
 authors = ["Gridlock-Flipkart Team"]

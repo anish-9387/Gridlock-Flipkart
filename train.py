@@ -1,5 +1,5 @@
 """
-Gridlock-Flipkart 2.0 — CascadeIQ Training Pipeline (v2, leakage-safe)
+Gridlock-Flipkart 2.0 — Rippl Training Pipeline (v2, leakage-safe)
 =====================================================================
 Steps:
   1. Load data
@@ -41,7 +41,7 @@ os.makedirs(MODELS_DIR, exist_ok=True)
 
 def main():
     print("=" * 64)
-    print("  CascadeIQ — Training Pipeline v2 (leakage-safe, survival-aware)")
+    print("  Rippl — Training Pipeline v2 (leakage-safe, survival-aware)")
     print("=" * 64)
 
     print("\n[1/7] Loading dataset...")

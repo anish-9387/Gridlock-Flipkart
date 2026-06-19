@@ -1,5 +1,5 @@
 """
-CascadeIQ — Models
+Rippl — Models
 ==================
 XGBoost models with correctness fixes:
 

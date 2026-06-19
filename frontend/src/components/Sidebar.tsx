@@ -45,13 +45,14 @@ export default function Sidebar() {
             <X size={20} className="text-ink-secondary" />
           </button>
         )}
-        <div className="w-8 h-8 rounded-lg bg-primary-500 flex items-center justify-center
-          text-white font-bold text-sm shrink-0 shadow-sm">
-          CQ
+        <div className="w-8 h-8 rounded-lg bg-primary-500 flex items-center justify-center shrink-0 shadow-sm">
+          <svg viewBox="116 52 280 360" className="w-4 h-5" aria-hidden="true">
+            <path fill="#fff" fillRule="evenodd" d="M256 392 C 198 312 150 262 150 178 A 106 106 0 1 1 362 178 C 362 262 314 312 256 392 Z M214 178 a 42 42 0 1 0 84 0 a 42 42 0 1 0 -84 0 Z" />
+          </svg>
         </div>
         {!collapsed && (
           <div className="min-w-0">
-            <p className="text-sm font-semibold text-ink truncate">CascadeIQ</p>
+            <p className="text-sm font-semibold text-ink truncate">Rippl</p>
             <p className="text-[10px] text-ink-muted truncate hidden sm:block">Gridlock-Flipkart 2.0</p>
           </div>
         )}
