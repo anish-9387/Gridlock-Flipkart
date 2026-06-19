@@ -1,0 +1,71 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --foreground: #f1f5f9;
+  --background: #0f172a;
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+}
+
+@layer base {
+  * { @apply border-surface-border; }
+  body { @apply bg-surface text-slate-100 antialiased; }
+}
+
+@layer components {
+  .card {
+    @apply bg-surface-light rounded-xl border border-surface-border/50 p-5
+           shadow-lg shadow-black/10 transition-all duration-200
+           hover:border-surface-border/80;
+  }
+  .card-hover {
+    @apply card cursor-pointer hover:bg-surface-lighter/50 hover:-translate-y-0.5;
+  }
+  .metric-value {
+    @apply text-3xl font-bold tracking-tight;
+  }
+  .metric-label {
+    @apply text-sm font-medium text-slate-400;
+  }
+  .btn-primary {
+    @apply inline-flex items-center gap-2 rounded-lg bg-primary-600 px-5 py-2.5
+           text-sm font-semibold text-white shadow-lg shadow-primary-600/20
+           transition-all hover:bg-primary-500 active:scale-[0.97]
+           disabled:opacity-50 disabled:cursor-not-allowed;
+  }
+  .btn-secondary {
+    @apply inline-flex items-center gap-2 rounded-lg border border-surface-border
+           bg-surface-lighter/50 px-5 py-2.5 text-sm font-semibold text-slate-200
+           transition-all hover:bg-surface-lighter active:scale-[0.97];
+  }
+  .input-field {
+    @apply w-full rounded-lg border border-surface-border bg-surface-light/50
+           px-3.5 py-2.5 text-sm text-slate-100 placeholder-slate-500
+           transition-all focus:border-primary-500 focus:ring-1 focus:ring-primary-500/50
+           focus:outline-none;
+  }
+  .select-field {
+    @apply input-field appearance-none cursor-pointer;
+  }
+  .badge {
+    @apply inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+  .badge-low { @apply badge bg-emerald-500/15 text-emerald-400; }
+  .badge-medium { @apply badge bg-yellow-500/15 text-yellow-400; }
+  .badge-high { @apply badge bg-orange-500/15 text-orange-400; }
+  .badge-critical { @apply badge bg-red-500/15 text-red-400; }
+  .badge-active { @apply badge bg-blue-500/15 text-blue-400; }
+
+  .sidebar-link {
+    @apply flex items-center gap-3 rounded-lg px-3.5 py-2.5 text-sm font-medium
+           text-slate-400 transition-all hover:bg-surface-lighter hover:text-slate-100;
+  }
+  .sidebar-link-active {
+    @apply sidebar-link bg-primary-600/15 text-primary-400 hover:bg-primary-600/20 hover:text-primary-300;
+  }
+}

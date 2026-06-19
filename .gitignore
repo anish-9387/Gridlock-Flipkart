@@ -6,6 +6,7 @@ __pycache__/
 dist/
 build/
 *.so
+*.egg
 
 # Dependencies
 .venv/
@@ -13,6 +14,7 @@ venv/
 env/
 .poetry/
 Pipfile.lock
+poetry.lock
 
 # IDE
 .vscode/
@@ -27,17 +29,22 @@ Thumbs.db
 *.log
 
 # Project data (generated during training)
-# models/*.pkl
-# models/metrics.json
+models/*.pkl
+models/metrics.json
 
 # Dataset (original source)
-# data/dataset.csv
+data/dataset.csv
 
 # Streamlit
 .streamlit/
 
-# Post-event learning runtime store (regenerated on demand)
-data/predictions_log.csv
+# Node / Frontend
+frontend/node_modules/
+frontend/.next/
+frontend/out/
+
+# Backend runtime
+*.pid
 
 # Testing
 .coverage
