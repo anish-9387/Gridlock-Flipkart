@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/wordmark.png" width="340" alt="Rippl"/>
+  <img src="assets/logo.png" width="280" alt="Rippl logo"/>
 </p>
 
 <p align="center">
