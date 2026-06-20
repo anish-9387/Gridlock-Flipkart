@@ -3,8 +3,8 @@ import './globals.css';
 import Sidebar from '@/components/Sidebar';
 
 export const metadata: Metadata = {
-  title: 'Rippl — Event Impact Intelligence',
-  description: 'Event Impact Forecasting & Response Intelligence System — Gridlock-Flipkart 2.0',
+  title: 'Rippl - Event Impact Intelligence',
+  description: 'Event Impact Forecasting & Response Intelligence System',
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
