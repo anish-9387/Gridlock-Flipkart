@@ -122,19 +122,33 @@ The dashboard's Model Card page renders all of this live, including the cascade 
 
 ## Architecture
 
-```
-8,173 historical events
-        │
-        ├─► Road Network Graph ── NetworkX · 294 junctions · betweenness fragility · percolation
-        │
-        ├─► Feature Pipeline ──── 28 leak-safe features (cyclical time, smoothed target encoding, centrality)
-        │
-        ├─► Impact Classifier ────────── XGBoost (composite severity)
-        ├─► AFT Resolution Model ──────── XGBoost survival:aft
-        ├─► Cascade Classifier ────────── XGBoost + isotonic calibration
-        ├─► Time-To-Failure Estimator ─── escalation pressure → decision window
-        │
-        └─► Streamlit Decision-Support Dashboard (14 modules)
+```mermaid
+flowchart LR
+    A["8,173 historical events<br/>Bengaluru traffic data"] --> B
+    A --> G["road network graph<br/>NetworkX · 294 junctions"]
+
+    subgraph B[" "]
+        direction TB
+        B1["Cascade Classifier<br/>XGBoost + isotonic calibration<br/>ROC-AUC 0.91 · Brier 0.038"]
+        B2["Impact Classifier<br/>XGBoost · composite severity<br/>71.3% acc"]
+        B3["AFT Resolution Model<br/>XGBoost survival:aft<br/>censoring-aware"]
+    end
+
+    G --> H["betweenness centrality<br/>+ percolation tracking"]
+
+    B --> F
+    H --> F["Time-To-Failure Fusion<br/>cascade risk + severity + fragility"]
+
+    F --> D["Decision-support dashboard<br/>14 modules · Cascade Autopsy,<br/>Early Warning, Network Propagation"]
+
+    style F fill:#791F1F,stroke:#791F1F,color:#FCEBEB
+    style D fill:#FFF7EA,stroke:#D85A30,color:#712B13
+    style B1 fill:#FAECE7,stroke:#D85A30,color:#712B13
+    style B2 fill:#F4F2EC,stroke:#B4B2A9,color:#1A1A18
+    style B3 fill:#F4F2EC,stroke:#B4B2A9,color:#1A1A18
+    style G fill:#FAECE7,stroke:#D85A30,color:#712B13
+    style H fill:#F4F2EC,stroke:#B4B2A9,color:#1A1A18
+    style A fill:#F4F2EC,stroke:#B4B2A9,color:#1A1A18
 ```
 
 ---
