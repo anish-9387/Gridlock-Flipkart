@@ -22,7 +22,7 @@
 Rippl identifies a 10.7-minute decision window before the network reaches a Point of No Return. Using Cascade Autopsy, operators can replay the event and test what would have happened if they had intervened earlier. In this case, acting within the window would have stopped the cascade, reduced resolution time from 48 minutes to 17.9 minutes, and prevented nearly 60% of the resulting delay. That's not post-event analytics. That's operational learning for the next disruption.
 
 <p align="center">
-  <img src="assets/demo_ss.png" alt="Demo Screenshot"/>
+  <img src="assets/demo_ss.png" alt="Cascade Autopsy showing a 10.7 minute decision window and 60% delay reduction"/>
 </p>
 
 [Screenshot: Cascade Autopsy - 10.7 min Decision Window, 17.9 min Potential Delay Saved, ~60% Reduction]
