@@ -19,9 +19,13 @@
 
 ## What this looks like in practice
 
-A water logging event is reported in Bengaluru. Rippl flags it as Critical impact with a 76% cascade probability and a 07:18 Point of No Return — meaning authorities have a 10-minute window to act. The Cascade Autopsy module then shows that lifting the road closure would have cut cascade risk from 76% to 4% and extended Time-To-Failure from 24 minutes to 62 minutes. That's the difference between a managed disruption and a gridlock.
+Rippl identifies a 10.7-minute decision window before the network reaches a Point of No Return. Using Cascade Autopsy, operators can replay the event and test what would have happened if they had intervened earlier. In this case, acting within the window would have stopped the cascade, reduced resolution time from 48 minutes to 17.9 minutes, and prevented nearly 60% of the resulting delay. That's not post-event analytics. That's operational learning for the next disruption.
 
-**→ [Screenshot: Cascade Autopsy — water logging event, Critical → Medium, 76% → 4% cascade risk]**
+<p align="center">
+  <img src="assets/demo_ss.png" alt="Demo Screenshot"/>
+</p>
+
+[Screenshot: Cascade Autopsy - 10.7 min Decision Window, 17.9 min Potential Delay Saved, ~60% Reduction]
 
 ---
 
