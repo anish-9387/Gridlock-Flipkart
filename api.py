@@ -385,6 +385,33 @@ def get_resources(input_data: ResourceInput):
     }
 
 
+# ---------------------------------------------------------------------------
+# Serve built frontend (single-service deployment mode)
+# ---------------------------------------------------------------------------
+FRONTEND_DIR = os.path.join(BASE_DIR, 'frontend', 'out')
+
+if os.path.isdir(FRONTEND_DIR):
+    from fastapi.staticfiles import StaticFiles
+    from fastapi.responses import FileResponse
+
+    _next_dir = os.path.join(FRONTEND_DIR, '_next')
+    if os.path.isdir(_next_dir):
+        app.mount("/_next", StaticFiles(directory=_next_dir), name="next-assets")
+
+    @app.get("/{full_path:path}")
+    async def serve_frontend(full_path: str):
+        file_path = os.path.join(FRONTEND_DIR, full_path)
+        if os.path.isfile(file_path):
+            return FileResponse(file_path)
+        index_path = os.path.join(FRONTEND_DIR, full_path, "index.html")
+        if os.path.isfile(index_path):
+            return FileResponse(index_path)
+        fallback = os.path.join(FRONTEND_DIR, "index.html")
+        if os.path.isfile(fallback):
+            return FileResponse(fallback)
+        from fastapi.responses import HTMLResponse
+        return HTMLResponse("Not Found", status_code=404)
+
 if __name__ == '__main__':
     import uvicorn
     uvicorn.run(app, host='0.0.0.0', port=8000)
