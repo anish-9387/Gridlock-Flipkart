@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
@@ -36,26 +37,25 @@ export default function Sidebar() {
     return () => { document.body.style.overflow = ''; };
   }, [mobileOpen]);
 
-  const sidebarContent = (
+  const renderSidebarContent = (isCollapsed: boolean, isMobile = false) => (
     <>
       {/* Logo */}
-      <div className="flex items-center gap-3 px-4 h-16 border-b border-surface-border shrink-0">
-        {!collapsed && (
+      <div className={`flex items-center gap-3 h-20 border-b border-surface-border shrink-0 ${isCollapsed ? 'justify-center px-2' : 'px-4'}`}>
+        {isMobile && (
           <button onClick={() => setMobileOpen(false)} className="lg:hidden mr-1 p-1 -ml-1 rounded-lg hover:bg-surface-hover">
             <X size={20} className="text-ink-secondary" />
           </button>
         )}
-        <div className="w-8 h-8 rounded-lg bg-primary-500 flex items-center justify-center shrink-0 shadow-sm">
-          <svg viewBox="116 52 280 360" className="w-4 h-5" aria-hidden="true">
-            <path fill="#fff" fillRule="evenodd" d="M256 392 C 198 312 150 262 150 178 A 106 106 0 1 1 362 178 C 362 262 314 312 256 392 Z M214 178 a 42 42 0 1 0 84 0 a 42 42 0 1 0 -84 0 Z" />
-          </svg>
+        <div className={`relative overflow-hidden shrink-0 ${isCollapsed ? 'h-10 w-10' : 'h-12 flex-1 max-w-[184px]'}`}>
+          <Image
+            src="/wordmark.png"
+            alt="Rippl"
+            fill
+            priority
+            sizes={isCollapsed ? '40px' : '184px'}
+            className="object-contain object-left"
+          />
         </div>
-        {!collapsed && (
-          <div className="min-w-0">
-            <p className="text-sm font-semibold text-ink truncate">Rippl</p>
-            <p className="text-[10px] text-ink-muted truncate hidden sm:block">Gridlock-Flipkart 2.0</p>
-          </div>
-        )}
       </div>
 
       {/* Nav */}
@@ -67,10 +67,10 @@ export default function Sidebar() {
               key={href}
               href={href}
               className={active ? 'sidebar-link-active' : 'sidebar-link'}
-              title={collapsed ? label : undefined}
+              title={isCollapsed ? label : undefined}
             >
               <Icon size={18} className="shrink-0" />
-              {!collapsed && <span className="truncate">{label}</span>}
+              {!isCollapsed && <span className="truncate">{label}</span>}
             </Link>
           );
         })}
@@ -82,8 +82,8 @@ export default function Sidebar() {
           onClick={() => setCollapsed(!collapsed)}
           className="sidebar-link w-full"
         >
-          {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-          {!collapsed && <span>Collapse</span>}
+          {isCollapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
+          {!isCollapsed && <span>Collapse</span>}
         </button>
       </div>
     </>
@@ -115,7 +115,7 @@ export default function Sidebar() {
         transition-all duration-300 flex flex-col
         ${collapsed ? 'w-[68px]' : 'w-64'}
         hidden lg:flex`}>
-        {sidebarContent}
+        {renderSidebarContent(collapsed)}
       </aside>
 
       {/* Mobile drawer — slides in from left */}
@@ -124,7 +124,7 @@ export default function Sidebar() {
         transition-transform duration-300 ease-out flex flex-col
         lg:hidden
         ${mobileOpen ? 'translate-x-0' : '-translate-x-full'}`}>
-        {sidebarContent}
+        {renderSidebarContent(false, true)}
       </aside>
     </>
   );
